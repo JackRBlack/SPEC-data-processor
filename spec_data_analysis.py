@@ -137,7 +137,74 @@ def spec_data_reader(SCAN_FORMAT, FILEPATH, FILENAME, scan_nums):
 
 # data process
 
-def spec_data_average(FILEPATH, FILENAME, scan_nums):
+def spec_data_average(datablock, SCAN_FORMAT):
+    
+    '''
+        Read several SPEC scans' data and average them. 
+        
+        Author: Wenjie Chen 
+        E-mail: wenjiechen@pku.edu.cn
+        
+        args:
+            datablock : [list] data read from SPEC data file with function "spec_data_reader".
+            SCAN_FORMAT : [string] to indicate the scan format, "ascan" or "a2scan".
+            
+        returns:
+            [th, IO_BD3, TEY, MCP, pm3] or  [tth, th, IO_BD3, TEY, MCP, pm3]: [list]
+            
+        example:
+            [th, IO_BD3, TEY, MCP, pm3] = spec_data_average(datablock1, "ascan")
+            [tth, th, IO_BD3, TEY, MCP, pm3] = spec_data_average(datablock2, "a2scan")
+    ''' 
+    
+    import numpy as np
+    
+    if SCAN_FORMAT == 'ascan':
+        th = datablock[0][0]
+        I0_BD3 = datablock[0][1]
+        TEY = datablock[0][2] - datablock[0][2]
+        MCP = datablock[0][3] - datablock[0][3]
+        pm3 = datablock[0][4] - datablock[0][4]
+        
+        i = 0
+        for data in datablock:
+            TEY = TEY + data[2] / data[1]
+            MCP = MCP + data[3] / data[1]
+            pm3 = pm3 + data[4] / data[1]
+            i = i + 1
+
+        TEY = TEY / i
+        MCP = MCP / i
+        pm3 = pm3 / i
+        
+        return [th, I0_BD3, TEY, MCP, pm3]
+    
+    elif SCAN_FORMAT == 'a2scan':
+        tth = datablock[0][0]
+        th = datablock[0][1]
+        I0_BD3 = datablock[0][2]
+        TEY = datablock[0][3] - datablock[0][3]
+        MCP = datablock[0][4] - datablock[0][4]
+        pm3 = datablock[0][5] - datablock[0][5]
+        
+        i = 0
+        for data in datablock:
+            TEY = TEY + data[3] / data[2]
+            MCP = MCP + data[4] / data[2]
+            pm3 = pm3 + data[5] / data[2]
+            i = i + 1
+
+        TEY = TEY / i
+        MCP = MCP / i
+        pm3 = pm3 / i
+        
+        return [tth, th, I0_BD3, TEY, MCP, pm3]
+    
+    else:
+        raise ValueError('SCAN_FORMAT must be "ascan" or "a2scan"!')
+        return
+
+def spec_data_average_f(FILEPATH, FILENAME, scan_nums):
     
     '''
         Read several SPEC scans' data and average them. 
@@ -415,9 +482,12 @@ def spec_show_a2scan_route(FILEPATH, FILENAME, scan_nums, line_color):
             spec_show_a2scan_route("./data/", "sample_a", [123, 124, 125], (0.1,0.5,0.1))
             plt.show()
     '''
+
+    import matplotlib.pyplot as plt
     
     for scan_num in scan_nums:
         data = spec_th2th_reader(FILEPATH, FILENAME, scan_num)
         tth = [data[0][0], data[0][-1]]
         th = [data[1][0], data[1][-1]]
         plt.plot(th, tth, c=line_color)
+    return
