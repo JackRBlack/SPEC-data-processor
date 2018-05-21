@@ -4,10 +4,9 @@ Analysis spec data in Python.
 
 <img src="./screenshot.png" alt="Screenshot of codes." style='height: 100%; width: 100%; object-fit: contain'>
 
-## Updates:
-
------ May 21st 2018 -----
-1. Added a function to average data in a more elegent way.
+### Updates 0.1.1
+* Added a function to average data in a more elegent way.
+* Modified the background subtracting function to support a2scan.
 
 ## What is this project?
 
