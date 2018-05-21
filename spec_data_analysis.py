@@ -280,7 +280,7 @@ def spec_data_bg_subtracted_scans(FILEPATH, FILENAME, signal_scan_nums, bg_scan_
     
     return [th_sig, I0_BD3_sig, TEY, MCP, pm3]
 
-def spec_data_bg_subtracted(signal_data, bg_data):
+def spec_data_bg_subtracted(SCAN_FORMAT, signal_data, bg_data):
     
     '''
         Subtract background from signals using readed/calculated SPEC data. 
@@ -289,21 +289,31 @@ def spec_data_bg_subtracted(signal_data, bg_data):
         E-mail: wenjiechen@pku.edu.cn
         
         args:
+            SCAN_FORMAT : [string] to indicate the scan format, "ascan" or "a2scan".
             signal_data : [list] = [th, TEY, MCP, pm3]
             bg_data : [list] = [th, TEY, MCP, pm3]
             
         returns:
-            [th, I0_BD3, TEY, MCP, pm3] : [list]
+            [th, I0_BD3, TEY, MCP, pm3] or [tth, th, IO_BD3, TEY, MCP, pm3] : [list]
             
         example:
-            [th, I0_BD3, TEY, MCP, pm3] = spec_data_bg_subtracted(signal_data, bg_data)
-    ''' 
+            [th, I0_BD3, TEY, MCP, pm3] = spec_data_bg_subtracted("ascan", signal_data, bg_data)
+            [tth, th, I0_BD3, TEY, MCP, pm3] = spec_data_bg_subtracted("a2scan", signal_data, bg_data)
+    '''
     
-    TEY = signal_data[2] - bg_data[2]
-    MCP = signal_data[3] - bg_data[3]
-    pm3 = signal_data[4] - bg_data[4]
-    
-    return [signal_data[0], signal_data[1], TEY, MCP, pm3]
+    if SCAN_FORMAT == "ascan":
+        TEY = signal_data[2] - bg_data[2]
+        MCP = signal_data[3] - bg_data[3]
+        pm3 = signal_data[4] - bg_data[4]
+        return [signal_data[0], signal_data[1], TEY, MCP, pm3]
+    elif SCAN_FORMAT == "a2scan":
+        TEY = signal_data[3] - bg_data[3]
+        MCP = signal_data[4] - bg_data[4]
+        pm3 = signal_data[5] - bg_data[5]
+        return [signal_data[0], signal_data[1], signal_data[2], TEY, MCP, pm3]
+    else:
+        raise ValueError('SCAN_FORMAT must be "ascan" or "a2scan"!')
+        return
 
 # generate figure
 
@@ -400,6 +410,8 @@ def spec_plot(datablock, SCAN_FORMAT, VARIABLE, DETECTOR, I0_BD3, data_legends, 
                 raise ValueError('IO_BD3 must be 0 or 1!')
         else:
             raise ValueError('In a2scan VARIABLE must be "th" or "tth"!')
+    else:
+        raise ValueError('SCAN_FORMAT must be "ascan" or "a2scan"!')
     plt.xlabel(VARIABLE)
     plt.ylabel(DETECTOR)
     plt.legend()
