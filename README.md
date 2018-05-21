@@ -2,6 +2,8 @@
 
 Analysis spec data in Python.
 
+<img src="./screenshot.png" alt="Screenshot of codes." style='height: 100%; width: 100%; object-fit: contain'>
+
 ## Updates:
 
 ----- May 21st 2018 -----
