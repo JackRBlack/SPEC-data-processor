@@ -137,6 +137,24 @@ def spec_data_reader(SCAN_FORMAT, FILEPATH, FILENAME, scan_nums):
 
 # data process
 
+def spec_data_squash(data_list):
+    '''
+        Generate datablock with several SPEC scan data. 
+        
+        Author: Wenjie Chen 
+        E-mail: wenjiechen@pku.edu.cn
+        
+        args:
+            data_list : [list] several scan data to link.
+            
+        returns:
+            datablock : [list] 
+            
+        example:
+            datablock = spec_data_squash([data_1, data_2, data_3])
+    ''' 
+    return data_list
+
 def spec_data_average(datablock, SCAN_FORMAT):
     
     '''
@@ -208,6 +226,8 @@ def spec_data_average_f(FILEPATH, FILENAME, scan_nums):
     
     '''
         Read several SPEC scans' data and average them. 
+
+        *** This function may be deleted in the future. ***
         
         Author: Wenjie Chen 
         E-mail: wenjiechen@pku.edu.cn
