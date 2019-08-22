@@ -23,6 +23,7 @@ class specdata:
         self.lattice_constant = np.array([1, 1, 1]) # in Angstrom
         self.lattice_angles = np.array([90, 90, 90]) # in degrees
         self.reciprocal_lattice_constant = np.zeros([3]) # in Angstrom^-1
+        self.reciprocal_lattice_angles = np.array([90, 90, 90]) # in degrees
 
         # beam
         self.beam_energy = 0 # in eV
@@ -49,6 +50,7 @@ class specdata:
         '''
             Calculate the reciprocal lattice constant.
         '''
+        # calculate length
         theta = self.lattice_angles / 180 * np.pi
 
         V = self.lattice_constant[0] * self.lattice_constant[1] * self.lattice_constant[2] * \
@@ -58,7 +60,18 @@ class specdata:
         self.reciprocal_lattice_constant[1] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[2] * np.sin(theta[1]) / V
         self.reciprocal_lattice_constant[2] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[1] * np.sin(theta[2]) / V
 
-        print(f"The reciprocal lattice constant is {self.reciprocal_lattice_constant}.")
+        # calcualte angles
+        # using formula from Acta Cryst. (1968). A 24, 247
+        
+        self.reciprocal_lattice_angles[0] = np.arccos((np.cos(theta[1]) * np.cos(theta[2]) - np.cos(theta[0])) / (np.sin(theta[1]) * np.sin(theta[2])))
+        self.reciprocal_lattice_angles[1] = np.arccos((np.cos(theta[0]) * np.cos(theta[2]) - np.cos(theta[1])) / (np.sin(theta[0]) * np.sin(theta[2])))
+        self.reciprocal_lattice_angles[2] = np.arccos((np.cos(theta[0]) * np.cos(theta[1]) - np.cos(theta[2])) / (np.sin(theta[0]) * np.sin(theta[1])))
+
+        self.reciprocal_lattice_angles = self.reciprocal_lattice_angles / np.pi * 180
+
+        print("The reciprocal lattice constant:")
+        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant}")
+        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles}")
         return
 
     def cal_or2(self):
@@ -72,7 +85,7 @@ class specdata:
             Decompose c = alpha * a + beta * b in 2D, return [alpha, beta].
         '''
         X = 1 / (np.dot(a, a) * np.dot(b, b) - np.dot(a, b) ** 2)
-        A =  np.dot(b, b)
+        A = np.dot(b, b)
         B = - np.dot(a, b)
         C = np.dot(a, a)
 
@@ -263,8 +276,8 @@ class specdata:
         FILENAME = './' + self.PROJECT_NAME + '/Data/Scans_MCP/scan_mcp_' + str(scan_num).zfill(3) + '.dat'
         return FILENAME
 
-     def scan_mcp_animation_filename(self, scan_num):
-        DIR_movie = './' + debug.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(50).zfill(3) + '.mp4'
+    def scan_mcp_animation_filename(self, scan_num):
+        DIR_movie = './' + debug.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
         return DIR_movie
 
     def scan_info(self, scan_num):
@@ -383,12 +396,13 @@ class specdata:
     def data_subtract_background(self, scan_main, scan_bg):
         return
 
-    ########################################################################
-    ############################## MCP data ################################
-    ########################################################################
+    ################################################################################
+    ############################## process MCP data ################################
+    ################################################################################
 
     def img_data_scan_mcp(self, scan_num):
         '''
+            Extract counts and position data from MCP images in one scan.
         '''
         FILENAME = self.scan_mcp_filename(scan_num)
 
@@ -446,6 +460,8 @@ class specdata:
 
     def hkl_data_scan_mcp(self, scan_num):
         '''
+            Extract counts and position data from MCP images in one scan,
+            and then map the postition data to hkl space.
         '''
         print("Reading MCP data ...")
         (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
