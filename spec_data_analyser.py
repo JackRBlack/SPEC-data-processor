@@ -211,10 +211,6 @@ class specdata:
         #logging.info(f"Create directories: {DIR1}, {DIR2}, {DIR3}.")
         return
 
-    def get_path_scan_mcp_animation(self, scan_num):
-        DIR_movie = './' + debug.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(50).zfill(3) + '.mp4'
-        return DIR_movie
-
     def split_data(self, INPUT_FILENAME, scan_no_range = 0):
         '''
             Use program "unspec" to split raw data into series of scans.
@@ -266,6 +262,10 @@ class specdata:
         '''
         FILENAME = './' + self.PROJECT_NAME + '/Data/Scans_MCP/scan_mcp_' + str(scan_num).zfill(3) + '.dat'
         return FILENAME
+
+     def scan_mcp_animation_filename(self, scan_num):
+        DIR_movie = './' + debug.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(50).zfill(3) + '.mp4'
+        return DIR_movie
 
     def scan_info(self, scan_num):
         '''
