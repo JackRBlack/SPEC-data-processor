@@ -23,13 +23,15 @@ class specdata:
         self.lattice_constant = np.array([1, 1, 1]) # in Angstrom
         self.lattice_angles = np.array([90, 90, 90]) # in degrees
         self.reciprocal_lattice_constant = np.zeros([3]) # in Angstrom^-1
-        self.reciprocal_lattice_angles = np.array([90, 90, 90]) # in degrees
+        self.reciprocal_lattice_angles = np.zeros([3]) # in degrees
 
         # beam
         self.beam_energy = 0 # in eV
+        self.beam_wavelength = 0 # in Angstrom
+        self.beam_k = 0 # in Angstrom^-1
 
         # spectrometer
-        self.R = 100 # scattering radius in mm
+        self.R = 300 # scattering radius in mm
         self.MCP_size = np.array([25, 25]) # width x height in mm
         self.MCP_pixel = np.array([128, 128])
 
@@ -41,6 +43,63 @@ class specdata:
         self.or0_xyz = np.zeros(3) # [x, y, z] in sample frame
         self.or1_xyz = np.zeros(3)
         self.or2_xyz = np.zeros(3)
+
+    #########################################################################
+    ############################## preparation ##############################
+    #########################################################################
+
+    def cal(self):
+        self.cal_beam()
+        self.cal_lattice()
+        return
+
+    def info(self):
+        '''
+            Print current configurations.
+        '''
+        print("============ Project Name ============")
+        print(f"Name: {self.PROJECT_NAME}")
+        print()
+        print("========== Lattice Constant ==========")
+        print("Lattice:")
+        print(f"[a, b, c] = {self.lattice_constant} Angstrom")
+        print(f"[alpha, beta, gamma] = {self.lattice_angles} Degrees")
+        print()
+        print("Reciprocal lattice:")
+        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant} Angstrom^-1")
+        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles} Degrees")
+        print()
+        print("=========== Beam Constant ============")
+        print(f"energy = {self.beam_energy} eV")
+        print(f"wavelength = {self.beam_wavelength} Angstrom")
+        print(f"k = {self.beam_k} Angstrom^-1")
+        print()
+        print("======= Spectrometer Constant ========")
+        print(f"scattering radius = {self.R} mm")
+        print(f"MCP size = {self.MCP_size} mm x mm")
+        print(f"MCP pixels = {self.MCP_pixel}")
+        print()
+        print("============ Bragg Peaks =============")
+        print("or0:")
+        print(f"index = {self.or0[1]}")
+        print(f"position = {self.or0[0]}")
+        print()
+        print("or1:")
+        print(f"index = {self.or1[1]}")
+        print(f"position = {self.or1[0]}")
+        return
+
+    ##############################################################################
+    ############################## beam calculation ##############################
+    ##############################################################################
+
+    def cal_beam(self):
+        self.beam_wavelength = 12398.42 / self.beam_energy
+        self.beam_k = 2 * np.pi / self.beam_wavelength
+        print("Beam:")
+        print(f"wavelength = {self.beam_wavelength} Angstrom")
+        print(f"k = {self.beam_k} Angstrom^-1")
+        return
 
     #################################################################################
     ############################## lattice calculation ##############################
@@ -62,7 +121,6 @@ class specdata:
 
         # calcualte angles
         # using formula from Acta Cryst. (1968). A 24, 247
-        
         self.reciprocal_lattice_angles[0] = np.arccos((np.cos(theta[1]) * np.cos(theta[2]) - np.cos(theta[0])) / (np.sin(theta[1]) * np.sin(theta[2])))
         self.reciprocal_lattice_angles[1] = np.arccos((np.cos(theta[0]) * np.cos(theta[2]) - np.cos(theta[1])) / (np.sin(theta[0]) * np.sin(theta[2])))
         self.reciprocal_lattice_angles[2] = np.arccos((np.cos(theta[0]) * np.cos(theta[1]) - np.cos(theta[2])) / (np.sin(theta[0]) * np.sin(theta[1])))
@@ -77,8 +135,40 @@ class specdata:
     def cal_or2(self):
         '''
             Calculate or2 with knowledge of or0, or1 & lattice constant.
+            default: scattering plane is a*c* plane
         '''
+        # orthogonalization in plane vectors
+        c_star = self.or0[1] / np.sqrt(np.dot(self.or0[1], self.or0[1]))
+        a_star = self.or1[1] - np.dot(c_star, self.or1[1]) * c_star
+        a_star = a_star / np.sqrt(np.dot(a_star, a_star))
+
+        # calculate q_vector in sample frame
+        c_vector = self.hkl_2_sample_xyz_in_plane(c_star)
+        a_vector = self.hkl_2_sample_xyz_in_plane(a_star)
+
+        # create b_vector
+        phi = self.reciprocal_lattice_angles[2]
+        b_vector = np.array([np.cos(-phi), 0, np.sin(-phi)]) * self.reciprocal_lattice_constant[1]
+
+        self.or2_xyz = c_vector + 0.2 * b_vector
+
+        hkl = np.array([0, 0.2, 1])
+        position_data = self.sample_xyz_2_angles(self.or2_xyz)
+
+        self.or2[0] = position_data
+        self.or2[1] = hkl
         return
+
+    def cal_peak(self, h, k, l):
+        '''
+            Calculate peak position based on lattice constant.
+            By default, the scattering plane is the (h, 0, l) plane,
+            with a_star parallel to the incident beam at th = 0.
+        '''
+        hkl = np.array([h, k, l])
+        q_vector = self.hkl_2_sample_xyz_lat(hkl)
+        position_data = self.sample_xyz_2_angles(q_vector)
+        return position_data
 
     def vector_decompose_2D(self, c, a, b):
         '''
@@ -146,7 +236,7 @@ class specdata:
         q_vector[1] = np.sin(beta) * np.cos(gamma)
         q_vector[2] = np.sin(gamma)
 
-        q_vector = q_vector * np.sin(tth / 2) * 2
+        q_vector = q_vector * np.sin(tth / 2) * 2 * self.beam_k
 
         return q_vector
 
@@ -183,6 +273,69 @@ class specdata:
 
         #return r # debug
         return [h, k, l]
+
+    def hkl_2_sample_xyz(self, hkl):
+        '''
+            Calculate q_vector in sample frame based on Bragg peaks.
+        '''
+        [alpha, beta, gamma] = self.vector_decompose_3D(hkl, self.or0[1], self.or1[1], self.or2[1])
+        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz + gamma * self.or2_xyz
+        return q_vector
+
+    def hkl_2_sample_xyz_lat(self, hkl):
+        '''
+            Calculate q_vector in sample frame based on lattice constants.
+            By default, the scattering plane is the (h, 0, l) plane,
+            with a_star parallel to the incident beam at th = 0.
+        '''
+        theta = self.reciprocal_lattice_angles / 180 * np.pi
+        a_star = self.reciprocal_lattice_constant[0] * np.array([1, 0, 0])
+        b_star = self.reciprocal_lattice_constant[1] * np.array([np.cos(-theta[2]), 0, np.sin(-theta[2])])
+        c_star = self.reciprocal_lattice_constant[2] * np.array([np.cos(theta[1]), np.sin(theta[1]), 0])
+        q_vector = hkl[0] * a_star + hkl[1] * b_star + hkl[2] * c_star
+        return q_vector
+
+    def hkl_2_sample_xyz_in_plane(self, hkl):
+        '''
+        '''
+        [alpha, beta] = self.vector_decompose_2D(hkl, self.or0[1], self.or1[1])
+        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz
+        return q_vector
+
+    def sample_xyz_2_angles(self, q_vector):
+        '''
+        '''
+        position_data = np.zeros([3])
+
+        q_abs = np.sqrt(np.dot(q_vector, q_vector))
+        if q_abs >= 2 * self.beam_k:
+            print("Current q_transfer is unreachable.")
+            print(f"|q_transfer| = {q_abs} >= 2 * {self.beam_k} = 2|k|")
+            return position_data
+
+        phi = 2 * np.arccos(q_abs / 2 / self.beam_k)
+
+        gamma = 2 * np.arcsin(q_vector[2] / q_abs)
+
+        alpha = np.arcsin(0.5 * np.sqrt(1 + 1 / np.cos(gamma)**2 - 2 * np.cos(phi) / np.cos(gamma) - np.tan(gamma)**2))
+
+        tth = np.pi - 2 * alpha
+
+        th = np.pi - np.arccos(q_vector[0] / np.sqrt(q_vector[0]**2 + q_vector[1]**2)) - alpha
+
+        z = self.R * np.tan(gamma)
+
+        position_data = np.array([th / np.pi * 180, tth / np.pi * 180, z])
+
+        return position_data
+
+    def hkl_2_angles(self, hkl):
+        '''
+            Calculate position data based on Bragg peaks.
+        '''
+        q_vector = self.hkl_2_sample_xyz(hkl)
+        position_data = self.sample_xyz_2_angles(q_vector)
+        return position_data
     
     ######################################################################
     ############################## data I/O ##############################
@@ -687,7 +840,7 @@ class specdata:
 
         return
 
-    def scatter_HKL(self, hklc_data, threshold, log=0, marker_size=15, colormap='jet_alpha'):
+    def scatter_HKL(self, hklc_data, threshold, log=0, marker_size=15, colormap='jet_alpha', equal_length=0):
         '''
             Generating 3D scatter plot in HKL space.
         '''
@@ -710,6 +863,18 @@ class specdata:
         ax.set_xlabel('H')
         ax.set_ylabel('K')
         ax.set_zlabel('L')
+
+        if equal_length == 1:
+            [X, Y, Z] = db[0:3]
+            max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max() / 2.0
+
+            mid_x = (X.max()+X.min()) * 0.5
+            mid_y = (Y.max()+Y.min()) * 0.5
+            mid_z = (Z.max()+Z.min()) * 0.5
+            ax.set_xlim(mid_x - max_range, mid_x + max_range)
+            ax.set_ylim(mid_y - max_range, mid_y + max_range)
+            ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
         fig.tight_layout()
         #plt.savefig("HKL_space.png", dpi = 150, format = 'png')
         plt.show()
