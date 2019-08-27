@@ -1,7 +1,7 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 0.8")
+print("Version: 0.8.2")
 print("Last Update: 2019.08.27")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
@@ -23,9 +23,14 @@ import shutil
 
 from IPython.display import Video
 
+from UB_matrix import *
+
 class specdata:
     def __init__(self):
         self.PROJECT_NAME = "NULL"
+
+        # hidden variable for test
+        self.scatter = scatter()
 
         # lattice
         self.lattice_constant = np.array([1, 1, 1]) # in Angstrom
@@ -59,6 +64,14 @@ class specdata:
     def cal(self):
         self.cal_beam()
         self.cal_lattice()
+        return
+
+    def initialize_scatter(self):
+        self.scatter.set_lat(self.lattice_constant, self.lattice_angles)
+        self.scatter.set_beam(self.beam_energy)
+        self.scatter.set_peak_1(self.or0[1], [self.or0[0][1], 0, self.beam_energy], [self.or0[0][0], 0, 0])
+        self.scatter.set_peak_2(self.or1[1], [self.or1[0][1], 0, self.beam_energy], [self.or1[0][0], 0, 0])
+        self.scatter.cal_UB_matrix()
         return
 
     def info(self):
@@ -344,6 +357,21 @@ class specdata:
         q_vector = self.hkl_2_sample_xyz(hkl)
         position_data = self.sample_xyz_2_angles(q_vector)
         return position_data
+
+    def angles_2_hkl_UB(self, position_data):
+        '''
+            May need to specify the angle position of one or more Bragg peaks.
+        '''
+        [th, tth, z] = position_data
+        gamma = np.arctan(z / self.R)
+        theta = np.rad2deg(np.arccos(np.cos(gamma) * np.cos(np.deg2rad(tth))))
+        phi = np.rad2deg(np.arcsin(np.sin(gamma) / np.sin(np.deg2rad(theta))))
+
+        angles = np.array([theta, phi, self.beam_energy])
+        rotations = np.array([th, 0, 0])
+        hkl = self.scatter.position2hkl(angles, rotations)
+
+        return hkl
     
     ######################################################################
     ############################## data I/O ##############################
@@ -637,6 +665,24 @@ class specdata:
         print("Done.")
         return (imgs_data, hkl_positions_data)
 
+    def hkl_data_scan_mcp_UB(self, scan_num):
+        '''
+            Extract counts and position data from MCP images in one scan,
+            and then map the postition data to hkl space.
+        '''
+        print("Reading MCP data ...")
+        (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
+        print("Done.")
+        print("Converting MCP data to HKL space ...")
+        img_no = len(imgs_data)
+        hkl_positions_data = np.zeros([img_no, self.MCP_pixel[0], self.MCP_pixel[1], 3])
+        for img_i in range(img_no):
+            for i in range(self.MCP_pixel[0]):
+                for j in range(self.MCP_pixel[1]):
+                    hkl_positions_data[img_i][i][j] = self.angles_2_hkl_UB(positions_data[img_i][i][j])
+        print("Done.")
+        return (imgs_data, hkl_positions_data)
+
     def hklc_data_combiner_mcp(self, imgs_data, hkl_positions_data):
         '''
             Prepare data for scatter in 3D hkl space.
@@ -673,6 +719,18 @@ class specdata:
         '''
         # get data from single scan file
         (imgs_data, hkl_positions_data) = self.hkl_data_scan_mcp(scan_num)
+
+        # processing and combine data
+        hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
+
+        return hklc_data
+
+    def hklc_data_scan_mcp_UB(self, scan_num):
+        '''
+            Prepare [h, k, l, counts] data for 3d scatter plot.
+        '''
+        # get data from single scan file
+        (imgs_data, hkl_positions_data) = self.hkl_data_scan_mcp_UB(scan_num)
 
         # processing and combine data
         hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
