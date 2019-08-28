@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: UB_matrix")
-print("Version: 1.0")
-print("Last Update: 2019.08.27")
+print("Version: 1.0.1")
+print("Last Update: 2019.08.28")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -21,11 +21,11 @@ class crystal:
     def info(self):
         print("========== Lattice Constant ==========")
         print("Lattice:")
-        print(f"[a, b, c] = {self.lattice_constant} Angstrom")
+        print(f"[a, b, c] = {self.lattice_lengths} Angstrom")
         print(f"[alpha, beta, gamma] = {self.lattice_angles} Degrees")
         print("--------------------------------------")
         print("Reciprocal lattice:")
-        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant} Angstrom^-1")
+        print(f"[a*, b*, c*] = {self.reciprocal_lattice_lengths} Angstrom^-1")
         print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles} Degrees")
         return
 

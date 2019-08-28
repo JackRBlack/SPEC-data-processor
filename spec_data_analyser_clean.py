@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 0.8.2")
-print("Last Update: 2019.08.27")
+print("Version: 0.8.3")
+print("Last Update: 2019.08.28")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -26,52 +26,49 @@ from IPython.display import Video
 from UB_matrix import *
 
 class specdata:
-    def __init__(self):
-        self.PROJECT_NAME = "NULL"
+    def __init__(self, NAME="NULL"):
+        self.PROJECT_NAME = NAME
 
         # hidden variable for test
         self.scatter = scatter()
-
-        # lattice
-        self.lattice_constant = np.array([1, 1, 1]) # in Angstrom
-        self.lattice_angles = np.array([90, 90, 90]) # in degrees
-        self.reciprocal_lattice_constant = np.zeros([3]) # in Angstrom^-1
-        self.reciprocal_lattice_angles = np.zeros([3]) # in degrees
-
-        # beam
-        self.beam_energy = 0 # in eV
-        self.beam_wavelength = 0 # in Angstrom
-        self.beam_k = 0 # in Angstrom^-1
 
         # spectrometer
         self.R = 300 # scattering radius in mm
         self.MCP_size = np.array([25, 25]) # width x height in mm
         self.MCP_pixel = np.array([128, 128])
 
-        # two peaks to calculate the HKL index at the MCP center
-        # or# = np.array([[th, tth, z = 0], [h, k, l]])
-        self.or0 = np.zeros([2, 3])
-        self.or1 = np.zeros([2, 3])
-        self.or2 = np.zeros([2, 3])
-        self.or0_xyz = np.zeros(3) # [x, y, z] in sample frame
-        self.or1_xyz = np.zeros(3)
-        self.or2_xyz = np.zeros(3)
-
     #########################################################################
     ############################## preparation ##############################
     #########################################################################
 
-    def cal(self):
-        self.cal_beam()
-        self.cal_lattice()
+    def set_peak_1(self, hkl, position):
+        [th, tth, z] = position
+        self.scatter.set_peak_1(hkl, [tth, 0, self.scatter.beam.beam_energy], [th, 0, 0])
         return
 
-    def initialize_scatter(self):
-        self.scatter.set_lat(self.lattice_constant, self.lattice_angles)
-        self.scatter.set_beam(self.beam_energy)
-        self.scatter.set_peak_1(self.or0[1], [self.or0[0][1], 0, self.beam_energy], [self.or0[0][0], 0, 0])
-        self.scatter.set_peak_2(self.or1[1], [self.or1[0][1], 0, self.beam_energy], [self.or1[0][0], 0, 0])
+    def set_peak_2(self, hkl, position):
+        [th, tth, z] = position
+        self.scatter.set_peak_2(hkl, [tth, 0, self.scatter.beam.beam_energy], [th, 0, 0])
+        return
+
+    def initialize(self):
+        self.IO_initialize()
         self.scatter.cal_UB_matrix()
+        self.save_configuration()
+        return
+
+    def help(self):
+        '''
+            Print the help document.
+        '''
+        print("============ Manual ============")
+        print("----- A. Preparations -----")
+        print("Assume the object name is <self>, then")
+        print("1. Call self.scatter.set_lat([a, b, c], [alpha, beta, gamma]).")
+        print("2. Call self.scatter.set_beam(beam_energy).")
+        print("3. Call self.set_peak_1(hkl, position) &")
+        print("        self.set_peak_2(hkl, position).")
+        print("4. Call self.initialize().")
         return
 
     def info(self):
@@ -81,298 +78,14 @@ class specdata:
         print("============ Project Name ============")
         print(f"Name: {self.PROJECT_NAME}")
         print()
-        print("========== Lattice Constant ==========")
-        print("Lattice:")
-        print(f"[a, b, c] = {self.lattice_constant} Angstrom")
-        print(f"[alpha, beta, gamma] = {self.lattice_angles} Degrees")
-        print()
-        print("Reciprocal lattice:")
-        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant} Angstrom^-1")
-        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles} Degrees")
-        print()
-        print("=========== Beam Constant ============")
-        print(f"energy = {self.beam_energy} eV")
-        print(f"wavelength = {self.beam_wavelength} Angstrom")
-        print(f"k = {self.beam_k} Angstrom^-1")
+        self.scatter.info()
         print()
         print("======= Spectrometer Constant ========")
         print(f"scattering radius = {self.R} mm")
         print(f"MCP size = {self.MCP_size} mm x mm")
         print(f"MCP pixels = {self.MCP_pixel}")
-        print()
-        print("============ Bragg Peaks =============")
-        print("or0:")
-        print(f"index = {self.or0[1]}")
-        print(f"position = {self.or0[0]}")
-        print()
-        print("or1:")
-        print(f"index = {self.or1[1]}")
-        print(f"position = {self.or1[0]}")
         return
 
-    ##############################################################################
-    ############################## beam calculation ##############################
-    ##############################################################################
-
-    def cal_beam(self):
-        self.beam_wavelength = 12398.42 / self.beam_energy
-        self.beam_k = 2 * np.pi / self.beam_wavelength
-        print("Beam:")
-        print(f"wavelength = {self.beam_wavelength} Angstrom")
-        print(f"k = {self.beam_k} Angstrom^-1")
-        return
-
-    #################################################################################
-    ############################## lattice calculation ##############################
-    #################################################################################
-
-    def cal_lattice(self):
-        '''
-            Calculate the reciprocal lattice constant.
-        '''
-        # calculate length
-        theta = self.lattice_angles / 180 * np.pi
-
-        V = self.lattice_constant[0] * self.lattice_constant[1] * self.lattice_constant[2] * \
-            np.sqrt(1 - np.cos(theta[0])**2 - np.cos(theta[1])**2 - np.cos(theta[2])**2 + 2 * np.cos(theta[0]) * np.cos(theta[1]) * np.cos(theta[2]))
-
-        self.reciprocal_lattice_constant[0] = 2 * np.pi * self.lattice_constant[1] * self.lattice_constant[2] * np.sin(theta[0]) / V
-        self.reciprocal_lattice_constant[1] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[2] * np.sin(theta[1]) / V
-        self.reciprocal_lattice_constant[2] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[1] * np.sin(theta[2]) / V
-
-        # calcualte angles
-        # using formula from Acta Cryst. (1968). A 24, 247
-        self.reciprocal_lattice_angles[0] = np.arccos((np.cos(theta[1]) * np.cos(theta[2]) - np.cos(theta[0])) / (np.sin(theta[1]) * np.sin(theta[2])))
-        self.reciprocal_lattice_angles[1] = np.arccos((np.cos(theta[0]) * np.cos(theta[2]) - np.cos(theta[1])) / (np.sin(theta[0]) * np.sin(theta[2])))
-        self.reciprocal_lattice_angles[2] = np.arccos((np.cos(theta[0]) * np.cos(theta[1]) - np.cos(theta[2])) / (np.sin(theta[0]) * np.sin(theta[1])))
-
-        self.reciprocal_lattice_angles = self.reciprocal_lattice_angles / np.pi * 180
-
-        print("The reciprocal lattice constant:")
-        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant}")
-        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles}")
-        return
-
-    def cal_or2(self):
-        '''
-            Calculate or2 with knowledge of or0, or1 & lattice constant.
-            default: scattering plane is a*c* plane
-        '''
-        # orthogonalization in plane vectors
-        c_star = self.or0[1] / np.sqrt(np.dot(self.or0[1], self.or0[1]))
-        a_star = self.or1[1] - np.dot(c_star, self.or1[1]) * c_star
-        a_star = a_star / np.sqrt(np.dot(a_star, a_star))
-
-        # calculate q_vector in sample frame
-        c_vector = self.hkl_2_sample_xyz_in_plane(c_star)
-        a_vector = self.hkl_2_sample_xyz_in_plane(a_star)
-
-        # create b_vector
-        phi = self.reciprocal_lattice_angles[2]
-        b_vector = np.array([np.cos(-phi), 0, np.sin(-phi)]) * self.reciprocal_lattice_constant[1]
-
-        self.or2_xyz = c_vector + 0.2 * b_vector
-
-        hkl = np.array([0, 0.2, 1])
-        position_data = self.sample_xyz_2_angles(self.or2_xyz)
-
-        self.or2[0] = position_data
-        self.or2[1] = hkl
-        return
-
-    def cal_peak(self, h, k, l):
-        '''
-            Calculate peak position based on lattice constant.
-            By default, the scattering plane is the (h, 0, l) plane,
-            with a_star parallel to the incident beam at th = 0.
-        '''
-        hkl = np.array([h, k, l])
-        q_vector = self.hkl_2_sample_xyz_lat(hkl)
-        position_data = self.sample_xyz_2_angles(q_vector)
-        return position_data
-
-    def vector_decompose_2D(self, c, a, b):
-        '''
-            Decompose c = alpha * a + beta * b in 2D, return [alpha, beta].
-        '''
-        X = 1 / (np.dot(a, a) * np.dot(b, b) - np.dot(a, b) ** 2)
-        A = np.dot(b, b)
-        B = - np.dot(a, b)
-        C = np.dot(a, a)
-
-        alpha = X * (A * np.dot(c, a) + B * np.dot(c, b))
-        beta = X * (B * np.dot(c, a) + C * np.dot(c, b))
-
-        return [alpha, beta]
-
-    def vector_decompose_3D(self, d, a, b, c):
-        '''
-            Decompose d = alpha * a + beta * b + gamma * c in 3D, return [alpha, beta, gamma].
-        '''
-        arrays = np.array([a, b, c])
-
-        y = np.array([np.dot(d, a), np.dot(d, b), np.dot(d, c)])
-
-        M = np.zeros([3, 3])
-        for i in range(3):
-            for j in range(3):
-                M[i][j] = np.dot(arrays[i], arrays[j])
-
-        [alpha, beta, gamma] = np.dot(np.linalg.inv(M), y)
-
-        return [alpha, beta, gamma]
-
-    def angles_2_xyz(self, position_data):
-        '''
-            Calculate xyz index for a spot.
-            Can be deleted in the future.
-        '''
-        [th, tth, z] = position_data
-
-        gamma = np.arctan(z / self.R)
-
-        [th, tth] = np.array([th, tth]) / 180 * np.pi
-
-        x = np.cos(tth) * np.cos(gamma) - 1
-        y = np.sin(tth) * np.cos(gamma)
-        z = np.sin(gamma)
-
-        return [x, y, z]
-
-    def angles_2_sample_xyz(self, position_data):
-        '''
-            Calculate xyz index for a spot.
-        '''
-        q_vector = np.zeros([3])
-
-        [th, tth, z] = position_data
-
-        gamma = np.arctan(z / self.R) / 2
-
-        [th, tth] = np.array([th, tth]) / 180 * np.pi
-
-        beta = tth / 2 - th + np.pi / 2
-
-        q_vector[0] = np.cos(beta) * np.cos(gamma)
-        q_vector[1] = np.sin(beta) * np.cos(gamma)
-        q_vector[2] = np.sin(gamma)
-
-        q_vector = q_vector * np.sin(tth / 2) * 2 * self.beam_k
-
-        return q_vector
-
-    def cal_or_xyz(self):
-        '''
-            Calculate xyz index for or0 and or1.
-        '''
-        self.or0_xyz = self.angles_2_sample_xyz(self.or0[0])
-        self.or1_xyz = self.angles_2_sample_xyz(self.or1[0])
-        self.or2_xyz = self.angles_2_sample_xyz(self.or2[0])
-        return
-
-    def angles_2_hkl_in_plane(self, position_data):
-        '''
-            Calculate hkl index for a spot in scattering plane, using or0 & or1.
-        '''
-        r = self.angles_2_sample_xyz(position_data)
-
-        [alpha, beta] = self.vector_decompose_2D(r, self.or0_xyz, self.or1_xyz)
-
-        [h, k, l] = alpha * self.or0[1] + beta * self.or1[1]
-
-        return [h, k, l]
-
-    def angles_2_hkl(self, position_data):
-        '''
-            May need to specify the angle position of one or more Bragg peaks.
-        '''
-        r = self.angles_2_sample_xyz(position_data)
-
-        [alpha, beta, gamma] = self.vector_decompose_3D(r, self.or0_xyz, self.or1_xyz, self.or2_xyz)
-
-        [h, k, l] = alpha * self.or0[1] + beta * self.or1[1] + gamma * self.or2[1]
-
-        #return r # debug
-        return [h, k, l]
-
-    def hkl_2_sample_xyz(self, hkl):
-        '''
-            Calculate q_vector in sample frame based on Bragg peaks.
-        '''
-        [alpha, beta, gamma] = self.vector_decompose_3D(hkl, self.or0[1], self.or1[1], self.or2[1])
-        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz + gamma * self.or2_xyz
-        return q_vector
-
-    def hkl_2_sample_xyz_lat(self, hkl):
-        '''
-            Calculate q_vector in sample frame based on lattice constants.
-            By default, the scattering plane is the (h, 0, l) plane,
-            with a_star parallel to the incident beam at th = 0.
-        '''
-        theta = self.reciprocal_lattice_angles / 180 * np.pi
-        a_star = self.reciprocal_lattice_constant[0] * np.array([1, 0, 0])
-        b_star = self.reciprocal_lattice_constant[1] * np.array([np.cos(-theta[2]), 0, np.sin(-theta[2])])
-        c_star = self.reciprocal_lattice_constant[2] * np.array([np.cos(theta[1]), np.sin(theta[1]), 0])
-        q_vector = hkl[0] * a_star + hkl[1] * b_star + hkl[2] * c_star
-        return q_vector
-
-    def hkl_2_sample_xyz_in_plane(self, hkl):
-        '''
-        '''
-        [alpha, beta] = self.vector_decompose_2D(hkl, self.or0[1], self.or1[1])
-        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz
-        return q_vector
-
-    def sample_xyz_2_angles(self, q_vector):
-        '''
-        '''
-        position_data = np.zeros([3])
-
-        q_abs = np.sqrt(np.dot(q_vector, q_vector))
-        if q_abs >= 2 * self.beam_k:
-            print("Current q_transfer is unreachable.")
-            print(f"|q_transfer| = {q_abs} >= 2 * {self.beam_k} = 2|k|")
-            return position_data
-
-        phi = 2 * np.arccos(q_abs / 2 / self.beam_k)
-
-        gamma = 2 * np.arcsin(q_vector[2] / q_abs)
-
-        alpha = np.arcsin(0.5 * np.sqrt(1 + 1 / np.cos(gamma)**2 - 2 * np.cos(phi) / np.cos(gamma) - np.tan(gamma)**2))
-
-        tth = np.pi - 2 * alpha
-
-        th = np.pi - np.arccos(q_vector[0] / np.sqrt(q_vector[0]**2 + q_vector[1]**2)) - alpha
-
-        z = self.R * np.tan(gamma)
-
-        position_data = np.array([th / np.pi * 180, tth / np.pi * 180, z])
-
-        return position_data
-
-    def hkl_2_angles(self, hkl):
-        '''
-            Calculate position data based on Bragg peaks.
-        '''
-        q_vector = self.hkl_2_sample_xyz(hkl)
-        position_data = self.sample_xyz_2_angles(q_vector)
-        return position_data
-
-    def angles_2_hkl_UB(self, position_data):
-        '''
-            May need to specify the angle position of one or more Bragg peaks.
-        '''
-        [th, tth, z] = position_data
-        gamma = np.arctan(z / self.R)
-        theta = np.rad2deg(np.arccos(np.cos(gamma) * np.cos(np.deg2rad(tth))))
-        phi = np.rad2deg(np.arcsin(np.sin(gamma) / np.sin(np.deg2rad(theta))))
-
-        angles = np.array([theta, phi, self.beam_energy])
-        rotations = np.array([th, 0, 0])
-        hkl = self.scatter.position2hkl(angles, rotations)
-
-        return hkl
-    
     ######################################################################
     ############################## data I/O ##############################
     ######################################################################
@@ -575,15 +288,55 @@ class specdata:
 
         return np.array(hklc_data)
 
-    ##########################################################################
-    ############################## process data ##############################
-    ##########################################################################
+    def save_configuration(self):
+        '''
+            Save configurations to file.
+        '''
+        FILENAME = './' + self.PROJECT_NAME +'/configuration.csv'
+        
+        # write data
+        with open(FILENAME, 'w', newline='') as csvfile:
+            datawriter = csv.writer(csvfile, delimiter=',',
+                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            
+            datawriter.writerow(['========== Lattice Constant =========='])
+            datawriter.writerow(['lengths', self.scatter.crystal.lattice_lengths])
+            datawriter.writerow(['angles', self.scatter.crystal.lattice_angles])
+            datawriter.writerow([' '])
+            datawriter.writerow(['================ Beam ================'])
+            datawriter.writerow(['beam energy', self.scatter.beam.beam_energy])
+            datawriter.writerow([' '])
+            datawriter.writerow(['============ Bragg Peaks ============='])
+            datawriter.writerow(['peak 1'])
+            datawriter.writerow(['hkl index', self.scatter.peak_1[0]])
+            datawriter.writerow(['theta, phi, energy', self.scatter.peak_1[1]])
+            datawriter.writerow(['omega, mu, nu', self.scatter.peak_1[2]])
+            datawriter.writerow(['peak 2'])
+            datawriter.writerow(['hkl index', self.scatter.peak_2[0]])
+            datawriter.writerow(['theta, phi, energy', self.scatter.peak_2[1]])
+            datawriter.writerow(['omega, mu, nu', self.scatter.peak_2[2]])
+            datawriter.writerow(['UB matrix', self.scatter.UB_matrix])
 
-    def data_average(self, scan_nums):
         return
 
-    def data_subtract_background(self, scan_main, scan_bg):
-        return
+    #################################################################################
+    ############################## lattice calculation ##############################
+    #################################################################################
+
+    def angles_2_hkl(self, position_data):
+        '''
+            Convert position data to hkl index using UB matrix.
+        '''
+        [th, tth, z] = position_data
+        gamma = np.arctan(z / self.R)
+        theta = np.rad2deg(np.arccos(np.cos(gamma) * np.cos(np.deg2rad(tth))))
+        phi = np.rad2deg(np.arcsin(np.sin(gamma) / np.sin(np.deg2rad(theta))))
+
+        angles = np.array([theta, phi, self.scatter.beam.beam_energy])
+        rotations = np.array([th, 0, 0])
+        hkl = self.scatter.position2hkl(angles, rotations)
+
+        return hkl
 
     ################################################################################
     ############################## process MCP data ################################
@@ -665,24 +418,6 @@ class specdata:
         print("Done.")
         return (imgs_data, hkl_positions_data)
 
-    def hkl_data_scan_mcp_UB(self, scan_num):
-        '''
-            Extract counts and position data from MCP images in one scan,
-            and then map the postition data to hkl space.
-        '''
-        print("Reading MCP data ...")
-        (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
-        print("Done.")
-        print("Converting MCP data to HKL space ...")
-        img_no = len(imgs_data)
-        hkl_positions_data = np.zeros([img_no, self.MCP_pixel[0], self.MCP_pixel[1], 3])
-        for img_i in range(img_no):
-            for i in range(self.MCP_pixel[0]):
-                for j in range(self.MCP_pixel[1]):
-                    hkl_positions_data[img_i][i][j] = self.angles_2_hkl_UB(positions_data[img_i][i][j])
-        print("Done.")
-        return (imgs_data, hkl_positions_data)
-
     def hklc_data_combiner_mcp(self, imgs_data, hkl_positions_data):
         '''
             Prepare data for scatter in 3D hkl space.
@@ -717,23 +452,15 @@ class specdata:
         '''
             Prepare [h, k, l, counts] data for 3d scatter plot.
         '''
+        start_time = time.time()
         # get data from single scan file
         (imgs_data, hkl_positions_data) = self.hkl_data_scan_mcp(scan_num)
 
         # processing and combine data
         hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
 
-        return hklc_data
-
-    def hklc_data_scan_mcp_UB(self, scan_num):
-        '''
-            Prepare [h, k, l, counts] data for 3d scatter plot.
-        '''
-        # get data from single scan file
-        (imgs_data, hkl_positions_data) = self.hkl_data_scan_mcp_UB(scan_num)
-
-        # processing and combine data
-        hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
+        elapsed_time = time.time() - start_time
+        print("Time consuming: {0:.3f}s.".format(elapsed_time))
 
         return hklc_data
 
@@ -812,7 +539,7 @@ class specdata:
 
         return
 
-    def animation_scan_mcp(self, scan_num, v_range, fig_size, font_size, show = 1, clean = 1):
+    def animation_scan_mcp(self, scan_num, v_range = [0, -1], fig_size = (10, 10), font_size = 20, show = 1, clean = 1):
         '''
             Generate animations with specified MCP scan_num.
             v_range = [v_min, v_max]

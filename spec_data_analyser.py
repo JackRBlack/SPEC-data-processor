@@ -438,7 +438,7 @@ class specdata:
         return FILENAME
 
     def scan_mcp_animation_filename(self, scan_num):
-        DIR_movie = './' + debug.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
+        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
         return DIR_movie
 
     def scan_info(self, scan_num):
