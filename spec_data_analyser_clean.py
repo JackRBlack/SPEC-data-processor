@@ -1,7 +1,7 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 0.8.3")
+print("Version: 0.9.1")
 print("Last Update: 2019.08.28")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
@@ -383,6 +383,9 @@ class specdata:
                 imgs_data[img_i][i] = list(map(int, line.split(' ')))
                 i = i + 1
 
+            # adjust flip
+            imgs_data[img_i] = np.flip(imgs_data[img_i], 1)
+
             # processing position data
             position_data_raw = snap.split("\n#@IMG\n")[0].split('\n')
             tth = np.zeros([self.MCP_pixel[0]])
@@ -567,7 +570,7 @@ class specdata:
 
             ax = fig.add_subplot(111)
             ax.set_title('snap ' + str(snap_no))
-            img = plt.imshow(imgs_data[snap_no], vmin=v_min, vmax=v_max)
+            img = plt.imshow(imgs_data[snap_no].T, vmin=v_min, vmax=v_max)
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.1)
             plt.colorbar(img, cax)
