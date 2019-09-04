@@ -2,7 +2,7 @@
 print("########################################")
 print("Project: spec_data_analyser")
 print("Version: 0.9.1")
-print("Last Update: 2019.08.28")
+print("Last Update: 2019.09.04")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
