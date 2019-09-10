@@ -217,10 +217,13 @@ class specdata:
         # process data
         data = np.transpose(data_origin)
         th = data[0]
-        I0_BD3 = data[6]
-        TEY = data[7]
-        MCP = data[8]
-        pm3 = data[12]
+        I0_BD3 = data[7]
+        TEY = data[8]
+        MCP = data[-1]
+        pm3 = data[13]
+        H = data[1]
+        K = data[2]
+        L = data[3]
         
         return [th, I0_BD3, TEY, MCP, pm3]
 
