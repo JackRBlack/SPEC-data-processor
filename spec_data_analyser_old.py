@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.2.0 - ROI_debug")
-print("Last Update: 2019.09.27")
+print("Version: 0.8")
+print("Last Update: 2019.08.27")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -10,9 +10,6 @@ print("########################################")
 ##########################
 
 import numpy as np
-from scipy.signal import savgol_filter
-from scipy.interpolate import interp1d
-import random
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -26,52 +23,42 @@ import shutil
 
 from IPython.display import Video
 
-from UB_matrix import *
-
 class specdata:
-    def __init__(self, NAME="NULL"):
-        self.PROJECT_NAME = NAME
+    def __init__(self):
+        self.PROJECT_NAME = "NULL"
 
-        # hidden variable for test
-        self.scatter = scatter()
+        # lattice
+        self.lattice_constant = np.array([1, 1, 1]) # in Angstrom
+        self.lattice_angles = np.array([90, 90, 90]) # in degrees
+        self.reciprocal_lattice_constant = np.zeros([3]) # in Angstrom^-1
+        self.reciprocal_lattice_angles = np.zeros([3]) # in degrees
+
+        # beam
+        self.beam_energy = 0 # in eV
+        self.beam_wavelength = 0 # in Angstrom
+        self.beam_k = 0 # in Angstrom^-1
 
         # spectrometer
         self.R = 300 # scattering radius in mm
         self.MCP_size = np.array([25, 25]) # width x height in mm
         self.MCP_pixel = np.array([128, 128])
 
+        # two peaks to calculate the HKL index at the MCP center
+        # or# = np.array([[th, tth, z = 0], [h, k, l]])
+        self.or0 = np.zeros([2, 3])
+        self.or1 = np.zeros([2, 3])
+        self.or2 = np.zeros([2, 3])
+        self.or0_xyz = np.zeros(3) # [x, y, z] in sample frame
+        self.or1_xyz = np.zeros(3)
+        self.or2_xyz = np.zeros(3)
+
     #########################################################################
     ############################## preparation ##############################
     #########################################################################
 
-    def set_peak_1(self, hkl, position):
-        [th, tth, z] = position
-        self.scatter.set_peak_1(hkl, [tth, 0, self.scatter.beam.beam_energy], [th, 0, 0])
-        return
-
-    def set_peak_2(self, hkl, position):
-        [th, tth, z] = position
-        self.scatter.set_peak_2(hkl, [tth, 0, self.scatter.beam.beam_energy], [th, 0, 0])
-        return
-
-    def initialize(self):
-        self.IO_initialize()
-        self.scatter.cal_UB_matrix()
-        self.save_configuration()
-        return
-
-    def help(self):
-        '''
-            Print the help document.
-        '''
-        print("============ Manual ============")
-        print("----- A. Preparations -----")
-        print("Assume the object name is <self>, then")
-        print("1. Call self.scatter.set_lat([a, b, c], [alpha, beta, gamma]).")
-        print("2. Call self.scatter.set_beam(beam_energy).")
-        print("3. Call self.set_peak_1(hkl, position) &")
-        print("        self.set_peak_2(hkl, position).")
-        print("4. Call self.initialize().")
+    def cal(self):
+        self.cal_beam()
+        self.cal_lattice()
         return
 
     def info(self):
@@ -81,14 +68,283 @@ class specdata:
         print("============ Project Name ============")
         print(f"Name: {self.PROJECT_NAME}")
         print()
-        self.scatter.info()
+        print("========== Lattice Constant ==========")
+        print("Lattice:")
+        print(f"[a, b, c] = {self.lattice_constant} Angstrom")
+        print(f"[alpha, beta, gamma] = {self.lattice_angles} Degrees")
+        print()
+        print("Reciprocal lattice:")
+        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant} Angstrom^-1")
+        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles} Degrees")
+        print()
+        print("=========== Beam Constant ============")
+        print(f"energy = {self.beam_energy} eV")
+        print(f"wavelength = {self.beam_wavelength} Angstrom")
+        print(f"k = {self.beam_k} Angstrom^-1")
         print()
         print("======= Spectrometer Constant ========")
         print(f"scattering radius = {self.R} mm")
         print(f"MCP size = {self.MCP_size} mm x mm")
         print(f"MCP pixels = {self.MCP_pixel}")
+        print()
+        print("============ Bragg Peaks =============")
+        print("or0:")
+        print(f"index = {self.or0[1]}")
+        print(f"position = {self.or0[0]}")
+        print()
+        print("or1:")
+        print(f"index = {self.or1[1]}")
+        print(f"position = {self.or1[0]}")
         return
 
+    ##############################################################################
+    ############################## beam calculation ##############################
+    ##############################################################################
+
+    def cal_beam(self):
+        self.beam_wavelength = 12398.42 / self.beam_energy
+        self.beam_k = 2 * np.pi / self.beam_wavelength
+        print("Beam:")
+        print(f"wavelength = {self.beam_wavelength} Angstrom")
+        print(f"k = {self.beam_k} Angstrom^-1")
+        return
+
+    #################################################################################
+    ############################## lattice calculation ##############################
+    #################################################################################
+
+    def cal_lattice(self):
+        '''
+            Calculate the reciprocal lattice constant.
+        '''
+        # calculate length
+        theta = self.lattice_angles / 180 * np.pi
+
+        V = self.lattice_constant[0] * self.lattice_constant[1] * self.lattice_constant[2] * \
+            np.sqrt(1 - np.cos(theta[0])**2 - np.cos(theta[1])**2 - np.cos(theta[2])**2 + 2 * np.cos(theta[0]) * np.cos(theta[1]) * np.cos(theta[2]))
+
+        self.reciprocal_lattice_constant[0] = 2 * np.pi * self.lattice_constant[1] * self.lattice_constant[2] * np.sin(theta[0]) / V
+        self.reciprocal_lattice_constant[1] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[2] * np.sin(theta[1]) / V
+        self.reciprocal_lattice_constant[2] = 2 * np.pi * self.lattice_constant[0] * self.lattice_constant[1] * np.sin(theta[2]) / V
+
+        # calcualte angles
+        # using formula from Acta Cryst. (1968). A 24, 247
+        self.reciprocal_lattice_angles[0] = np.arccos((np.cos(theta[1]) * np.cos(theta[2]) - np.cos(theta[0])) / (np.sin(theta[1]) * np.sin(theta[2])))
+        self.reciprocal_lattice_angles[1] = np.arccos((np.cos(theta[0]) * np.cos(theta[2]) - np.cos(theta[1])) / (np.sin(theta[0]) * np.sin(theta[2])))
+        self.reciprocal_lattice_angles[2] = np.arccos((np.cos(theta[0]) * np.cos(theta[1]) - np.cos(theta[2])) / (np.sin(theta[0]) * np.sin(theta[1])))
+
+        self.reciprocal_lattice_angles = self.reciprocal_lattice_angles / np.pi * 180
+
+        print("The reciprocal lattice constant:")
+        print(f"[a*, b*, c*] = {self.reciprocal_lattice_constant}")
+        print(f"[alpha*, beta*, gamma*] = {self.reciprocal_lattice_angles}")
+        return
+
+    def cal_or2(self):
+        '''
+            Calculate or2 with knowledge of or0, or1 & lattice constant.
+            default: scattering plane is a*c* plane
+        '''
+        # orthogonalization in plane vectors
+        c_star = self.or0[1] / np.sqrt(np.dot(self.or0[1], self.or0[1]))
+        a_star = self.or1[1] - np.dot(c_star, self.or1[1]) * c_star
+        a_star = a_star / np.sqrt(np.dot(a_star, a_star))
+
+        # calculate q_vector in sample frame
+        c_vector = self.hkl_2_sample_xyz_in_plane(c_star)
+        a_vector = self.hkl_2_sample_xyz_in_plane(a_star)
+
+        # create b_vector
+        phi = self.reciprocal_lattice_angles[2]
+        b_vector = np.array([np.cos(-phi), 0, np.sin(-phi)]) * self.reciprocal_lattice_constant[1]
+
+        self.or2_xyz = c_vector + 0.2 * b_vector
+
+        hkl = np.array([0, 0.2, 1])
+        position_data = self.sample_xyz_2_angles(self.or2_xyz)
+
+        self.or2[0] = position_data
+        self.or2[1] = hkl
+        return
+
+    def cal_peak(self, h, k, l):
+        '''
+            Calculate peak position based on lattice constant.
+            By default, the scattering plane is the (h, 0, l) plane,
+            with a_star parallel to the incident beam at th = 0.
+        '''
+        hkl = np.array([h, k, l])
+        q_vector = self.hkl_2_sample_xyz_lat(hkl)
+        position_data = self.sample_xyz_2_angles(q_vector)
+        return position_data
+
+    def vector_decompose_2D(self, c, a, b):
+        '''
+            Decompose c = alpha * a + beta * b in 2D, return [alpha, beta].
+        '''
+        X = 1 / (np.dot(a, a) * np.dot(b, b) - np.dot(a, b) ** 2)
+        A = np.dot(b, b)
+        B = - np.dot(a, b)
+        C = np.dot(a, a)
+
+        alpha = X * (A * np.dot(c, a) + B * np.dot(c, b))
+        beta = X * (B * np.dot(c, a) + C * np.dot(c, b))
+
+        return [alpha, beta]
+
+    def vector_decompose_3D(self, d, a, b, c):
+        '''
+            Decompose d = alpha * a + beta * b + gamma * c in 3D, return [alpha, beta, gamma].
+        '''
+        arrays = np.array([a, b, c])
+
+        y = np.array([np.dot(d, a), np.dot(d, b), np.dot(d, c)])
+
+        M = np.zeros([3, 3])
+        for i in range(3):
+            for j in range(3):
+                M[i][j] = np.dot(arrays[i], arrays[j])
+
+        [alpha, beta, gamma] = np.dot(np.linalg.inv(M), y)
+
+        return [alpha, beta, gamma]
+
+    def angles_2_xyz(self, position_data):
+        '''
+            Calculate xyz index for a spot.
+            Can be deleted in the future.
+        '''
+        [th, tth, z] = position_data
+
+        gamma = np.arctan(z / self.R)
+
+        [th, tth] = np.array([th, tth]) / 180 * np.pi
+
+        x = np.cos(tth) * np.cos(gamma) - 1
+        y = np.sin(tth) * np.cos(gamma)
+        z = np.sin(gamma)
+
+        return [x, y, z]
+
+    def angles_2_sample_xyz(self, position_data):
+        '''
+            Calculate xyz index for a spot.
+        '''
+        q_vector = np.zeros([3])
+
+        [th, tth, z] = position_data
+
+        gamma = np.arctan(z / self.R) / 2
+
+        [th, tth] = np.array([th, tth]) / 180 * np.pi
+
+        beta = tth / 2 - th + np.pi / 2
+
+        q_vector[0] = np.cos(beta) * np.cos(gamma)
+        q_vector[1] = np.sin(beta) * np.cos(gamma)
+        q_vector[2] = np.sin(gamma)
+
+        q_vector = q_vector * np.sin(tth / 2) * 2 * self.beam_k
+
+        return q_vector
+
+    def cal_or_xyz(self):
+        '''
+            Calculate xyz index for or0 and or1.
+        '''
+        self.or0_xyz = self.angles_2_sample_xyz(self.or0[0])
+        self.or1_xyz = self.angles_2_sample_xyz(self.or1[0])
+        self.or2_xyz = self.angles_2_sample_xyz(self.or2[0])
+        return
+
+    def angles_2_hkl_in_plane(self, position_data):
+        '''
+            Calculate hkl index for a spot in scattering plane, using or0 & or1.
+        '''
+        r = self.angles_2_sample_xyz(position_data)
+
+        [alpha, beta] = self.vector_decompose_2D(r, self.or0_xyz, self.or1_xyz)
+
+        [h, k, l] = alpha * self.or0[1] + beta * self.or1[1]
+
+        return [h, k, l]
+
+    def angles_2_hkl(self, position_data):
+        '''
+            May need to specify the angle position of one or more Bragg peaks.
+        '''
+        r = self.angles_2_sample_xyz(position_data)
+
+        [alpha, beta, gamma] = self.vector_decompose_3D(r, self.or0_xyz, self.or1_xyz, self.or2_xyz)
+
+        [h, k, l] = alpha * self.or0[1] + beta * self.or1[1] + gamma * self.or2[1]
+
+        #return r # debug
+        return [h, k, l]
+
+    def hkl_2_sample_xyz(self, hkl):
+        '''
+            Calculate q_vector in sample frame based on Bragg peaks.
+        '''
+        [alpha, beta, gamma] = self.vector_decompose_3D(hkl, self.or0[1], self.or1[1], self.or2[1])
+        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz + gamma * self.or2_xyz
+        return q_vector
+
+    def hkl_2_sample_xyz_lat(self, hkl):
+        '''
+            Calculate q_vector in sample frame based on lattice constants.
+            By default, the scattering plane is the (h, 0, l) plane,
+            with a_star parallel to the incident beam at th = 0.
+        '''
+        theta = self.reciprocal_lattice_angles / 180 * np.pi
+        a_star = self.reciprocal_lattice_constant[0] * np.array([1, 0, 0])
+        b_star = self.reciprocal_lattice_constant[1] * np.array([np.cos(-theta[2]), 0, np.sin(-theta[2])])
+        c_star = self.reciprocal_lattice_constant[2] * np.array([np.cos(theta[1]), np.sin(theta[1]), 0])
+        q_vector = hkl[0] * a_star + hkl[1] * b_star + hkl[2] * c_star
+        return q_vector
+
+    def hkl_2_sample_xyz_in_plane(self, hkl):
+        '''
+        '''
+        [alpha, beta] = self.vector_decompose_2D(hkl, self.or0[1], self.or1[1])
+        q_vector = alpha * self.or0_xyz + beta * self.or1_xyz
+        return q_vector
+
+    def sample_xyz_2_angles(self, q_vector):
+        '''
+        '''
+        position_data = np.zeros([3])
+
+        q_abs = np.sqrt(np.dot(q_vector, q_vector))
+        if q_abs >= 2 * self.beam_k:
+            print("Current q_transfer is unreachable.")
+            print(f"|q_transfer| = {q_abs} >= 2 * {self.beam_k} = 2|k|")
+            return position_data
+
+        phi = 2 * np.arccos(q_abs / 2 / self.beam_k)
+
+        gamma = 2 * np.arcsin(q_vector[2] / q_abs)
+
+        alpha = np.arcsin(0.5 * np.sqrt(1 + 1 / np.cos(gamma)**2 - 2 * np.cos(phi) / np.cos(gamma) - np.tan(gamma)**2))
+
+        tth = np.pi - 2 * alpha
+
+        th = np.pi - np.arccos(q_vector[0] / np.sqrt(q_vector[0]**2 + q_vector[1]**2)) - alpha
+
+        z = self.R * np.tan(gamma)
+
+        position_data = np.array([th / np.pi * 180, tth / np.pi * 180, z])
+
+        return position_data
+
+    def hkl_2_angles(self, hkl):
+        '''
+            Calculate position data based on Bragg peaks.
+        '''
+        q_vector = self.hkl_2_sample_xyz(hkl)
+        position_data = self.sample_xyz_2_angles(q_vector)
+        return position_data
+    
     ######################################################################
     ############################## data I/O ##############################
     ######################################################################
@@ -145,7 +401,7 @@ class specdata:
         print("Scans extracted.")
         return
 
-    def split_data_mcp(self, INPUT_FILENAME, hide_details = 1):
+    def split_data_mcp(self, INPUT_FILENAME):
         '''
             Split mcp raw data into series of scans.
             scan_no_range = [a, b] : extract scans from #a to #b, optional to avoid the lastest broken scan.
@@ -164,9 +420,7 @@ class specdata:
                 if scan[0] == '\n':
                     scan = scan[1:] # remove empty line
                 f.write(scan)
-                if hide_details != 1:
-                    print(f"Extracted scan #{scan_num}.")
-        print("Scans MCP data extracted.")
+                print(f"Extracted scan #{scan_num}.")
         return
 
     def scan_filename(self, scan_num):
@@ -187,41 +441,21 @@ class specdata:
         DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
         return DIR_movie
 
-    def read_scan(self, scan_num):
+    def scan_info(self, scan_num):
         '''
-            Read data, return column name and data block.
+            Print information from scan #scan_num.
         '''
         FILENAME = self.scan_filename(scan_num)
 
-        # read data
         with open(FILENAME) as f:
-            raw_data = f.readlines()
-            scan_info = raw_data[:5]
-            column_name = raw_data[5].split()[1:]
-            data_block_raw = raw_data[6:]
-
-        # process data
-        data_num = []
-        for line in data_block_raw:
-            data_txt = line.split(' ')
-            data_txt[-1] = data_txt[-1][:-1]
-            data_num.append(list(map(float, data_txt)))
-            
-        data_block = np.transpose(np.array(data_num))
-        return [column_name, data_block]
-
-    def scan_value(self, scan_num, variable):
-        '''
-            Return the data array named <variable> in scan #scan_num.
-        '''
-        [column_name, data_block] = self.read_scan(scan_num)
-        return data_block[column_name.index(variable)]
+            for i in range(5):
+                print(f.readline())
+        return
 
     def read_ascan(self, scan_num):
     
         '''
             Read SPEC ascan data from a single data file with specific scan #.
-            Shall be deleted in the future.
             
             args:
                 FILEPATH : [string] to indicate where the data file is located.
@@ -244,20 +478,15 @@ class specdata:
         th = data[0]
         I0_BD3 = data[6]
         TEY = data[7]
-        MCP = data[-1]
+        MCP = data[8]
         pm3 = data[12]
+        
+        return [th, I0_BD3, TEY, MCP, pm3]
 
-        H = data[1]
-        K = data[2]
-        L = data[3]
-        
-        return [th, I0_BD3, TEY, MCP, pm3, H, K, L]
-        
     def read_a2scan(self, scan_num):
     
         '''
             Read SPEC ascan data from a single data file with specific scan #.
-            Shall be deleted in the future.
             
             args:
                 FILEPATH : [string] to indicate where the data file is located.
@@ -283,12 +512,8 @@ class specdata:
         TEY = data[8]
         MCP = data[9]
         pm3 = data[13]
-
-        H = data[1]
-        K = data[2]
-        L = data[3]
         
-        return [tth, th, I0_BD3, TEY, MCP, pm3, H, K, L]
+        return [tth, th, I0_BD3, TEY, MCP, pm3]
 
     def save_data_hklc(self, hklc_data, FILENAME):
         '''
@@ -322,207 +547,19 @@ class specdata:
 
         return np.array(hklc_data)
 
-    def save_configuration(self):
-        '''
-            Save configurations to file.
-        '''
-        FILENAME = './' + self.PROJECT_NAME +'/configuration.csv'
-        
-        # write data
-        with open(FILENAME, 'w', newline='') as csvfile:
-            datawriter = csv.writer(csvfile, delimiter=',',
-                                    quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            
-            datawriter.writerow(['========== Lattice Constant =========='])
-            datawriter.writerow(['lengths', self.scatter.crystal.lattice_lengths])
-            datawriter.writerow(['angles', self.scatter.crystal.lattice_angles])
-            datawriter.writerow([' '])
-            datawriter.writerow(['================ Beam ================'])
-            datawriter.writerow(['beam energy', self.scatter.beam.beam_energy])
-            datawriter.writerow([' '])
-            datawriter.writerow(['============ Bragg Peaks ============='])
-            datawriter.writerow(['peak 1'])
-            datawriter.writerow(['hkl index', self.scatter.peak_1[0]])
-            datawriter.writerow(['theta, phi, energy', self.scatter.peak_1[1]])
-            datawriter.writerow(['omega, mu, nu', self.scatter.peak_1[2]])
-            datawriter.writerow(['peak 2'])
-            datawriter.writerow(['hkl index', self.scatter.peak_2[0]])
-            datawriter.writerow(['theta, phi, energy', self.scatter.peak_2[1]])
-            datawriter.writerow(['omega, mu, nu', self.scatter.peak_2[2]])
-            datawriter.writerow(['UB matrix', self.scatter.UB_matrix])
+    ##########################################################################
+    ############################## process data ##############################
+    ##########################################################################
 
+    def data_average(self, scan_nums):
         return
 
-    ###############################################################################
-    ############################## extract scan info ##############################
-    ###############################################################################
-
-    def T_info(self, scan_nums):
-        '''
-            Display temperature information for scans.
-        '''
-        for scan_num in scan_nums:
-            T = np.mean(self.scan_value(scan_num, 'Sample_T'))
-            print(f"Scan #{scan_num}, T = {T}K")
+    def data_subtract_background(self, scan_main, scan_bg):
         return
-
-    def column_name_info(self, scan_num):
-        '''
-            Display column name information for scan.
-        '''
-        [column_name, data_block] = self.read_scan(scan_num)
-        print(column_name)
-        return
-
-    def command_info(self, scan_nums):
-        '''
-            Display scan command for scans.
-        '''
-        for scan_num in scan_nums:
-            FILENAME = self.scan_filename(scan_num)
-
-            with open(FILENAME) as f:
-                COMMAND = f.readline()[0:-1]
-                T = np.mean(self.scan_value(scan_num, 'Sample_T'))
-                T = round(T, 1)
-                print(f"{COMMAND}, T_mean = {T}K")
-        return
-
-    def scan_info(self, scan_num):
-        '''
-            Print information from scan #scan_num.
-        '''
-        FILENAME = self.scan_filename(scan_num)
-
-        with open(FILENAME) as f:
-            for i in range(5):
-                print(f.readline())
-        return
-
-    def get_T(self, scan_nums):
-        T = []
-        for scan_num in scan_nums:
-            T.append(np.mean(self.scan_value(scan_num, 'Sample_T')))
-        return np.array(T)
-
-    def get_pol_angle(self, scan_nums):
-        pol = []
-        for scan_num in scan_nums:
-            FILENAME = self.scan_filename(scan_num)
-            with open(FILENAME) as f:
-                for i in range(5):
-                    line = f.readline()
-            pol.append(float(line.split(' ')[4]))
-        return np.array(pol)
-
-    #################################################################################
-    ############################## lattice calculation ##############################
-    #################################################################################
-
-    def angles_2_hkl(self, position_data):
-        '''
-            Convert position data to hkl index using UB matrix.
-        '''
-        [th, tth, z] = position_data
-        gamma = np.arctan(z / self.R)
-        theta = np.rad2deg(np.arccos(np.cos(gamma) * np.cos(np.deg2rad(tth))))
-        phi = np.rad2deg(np.arcsin(np.sin(gamma) / np.sin(np.deg2rad(theta))))
-
-        angles = np.array([theta, phi, self.scatter.beam.beam_energy])
-        rotations = np.array([th, 0, 0])
-        hkl = self.scatter.position2hkl(angles, rotations)
-
-        return hkl
-
-    #################################################################################
-    ############################## process scan data ################################
-    #################################################################################
-
-    def average_scan_value(self, scan_nums, variable, I0 = 1):
-        flag = 0
-        if I0 == 1: # divided by I0_BD3
-            for scan_num in scan_nums:
-                data = self.scan_value(scan_num, variable)
-                I0_BD3 = self.scan_value(scan_num, 'I0_BD3')
-                if flag == 0:
-                    data_average = np.zeros([len(data)])
-                    flag = 1
-                data_average = data_average + data / I0_BD3
-            data_average = data_average / len(scan_nums)
-        else: # not divided by I0_BD3
-            for scan_num in scan_nums:
-                data = self.scan_value(scan_num, variable)
-                if flag == 0:
-                    data_average = np.zeros([len(data)])
-                    flag = 1
-                data_average = data_average + data
-            data_average = data_average / len(scan_nums)
-        return data_average
-
-    def average_ascan(self, scan_nums):
-        '''
-            Shall be deleted in the future.
-        '''
-        flag = 0
-        for scan_num in scan_nums:
-            [th, I0_BD3, TEY, MCP, pm3, H, K, L] = self.read_ascan(scan_num)
-            if flag == 0:
-                TEY_average = np.zeros([len(TEY)])
-                MCP_average = np.zeros([len(MCP)])
-                pm3_average = np.zeros([len(pm3)])
-                flag = 1
-            TEY_average = TEY_average + TEY / I0_BD3
-            MCP_average = MCP_average + MCP / I0_BD3
-            pm3_average = pm3_average + pm3 / I0_BD3
-        TEY_average = TEY_average / len(scan_nums)
-        MCP_average = MCP_average / len(scan_nums)
-        pm3_average = pm3_average / len(scan_nums)
-        return [th, TEY_average, MCP_average, pm3_average, H, K, L]
-
 
     ################################################################################
     ############################## process MCP data ################################
     ################################################################################
-
-    def img_scan_mcp(self, scan_num):
-        '''
-            Just extract img data, does not care about position info.
-        '''
-        FILENAME = self.scan_mcp_filename(scan_num)
-
-        with open(FILENAME) as f:
-            datablock = f.read()
-        db = datablock.split("#C TwoTheta\t Detz\n")
-        
-        #print("========== Scan Info. ==========")
-        #print(db[0][0:-1])
-        #print("================================")
-
-        img_no = len(db[1:]) # number of images
-        # row_no = int(img_no / 2 + 0.5)
-
-        imgs_data = np.zeros([img_no, self.MCP_pixel[0], self.MCP_pixel[1]])
-
-        img_i = 0
-        for snap in db[1:]:
-            # processing image data
-            img_data_raw = snap.split("\n#@IMG\n")[1].split('\n')
-            if len(img_data_raw) == self.MCP_pixel[1] + 1:
-                img_data_raw = img_data_raw[0:-1] # ignore the final empty line
-
-            i = 0
-            for line in img_data_raw:
-                if line[-1] == ' ':
-                    line = line[0:-1] # ignore the final space
-                imgs_data[img_i][i] = list(map(int, line.split(' ')))
-                i = i + 1
-
-            # adjust flip
-            imgs_data[img_i] = np.flip(imgs_data[img_i], 1)
-
-            img_i = img_i + 1
-
-        return imgs_data
 
     def img_data_scan_mcp(self, scan_num):
         '''
@@ -540,16 +577,6 @@ class specdata:
             th_max = float(command[6])
             th_interval = int(command[8])
             th = np.linspace(th_min, th_max, th_interval + 1)
-        elif command[2] == 'a2scan':
-            th_min = float(command[9])
-            th_max = float(command[10])
-            th_interval = int(command[12])
-            th = np.linspace(th_min, th_max, th_interval + 1)
-        elif command[2] == 'hklscan':
-            th = self.scan_value(scan_num, 'Theta')
-        else:
-            th = self.scan_value(scan_num, 'H')
-            # th = self.scan_value(scan_num, 'Theta') # should be appliable to all commands
 
         print("========== Scan Info. ==========")
         print(db[0][0:-1])
@@ -575,9 +602,6 @@ class specdata:
                 imgs_data[img_i][i] = list(map(int, line.split(' ')))
                 i = i + 1
 
-            # adjust flip
-            imgs_data[img_i] = np.flip(imgs_data[img_i], 1)
-
             # processing position data
             position_data_raw = snap.split("\n#@IMG\n")[0].split('\n')
             tth = np.zeros([self.MCP_pixel[0]])
@@ -595,34 +619,6 @@ class specdata:
 
         return (imgs_data, positions_data)
 
-    def img_data_subtract(self, imgs_data_1, imgs_data_2):
-        imgs_data_sub = []
-        img_no = len(imgs_data_1)
-        for img_i in range(img_no):
-            imgs_data_sub.append(imgs_data_1[img_i] - imgs_data_2[img_i])
-        return np.array(imgs_data_sub)
-
-    def img_data_subtract_bg(self, imgs_data):
-        '''
-            Subtract counts from the first image.
-        '''
-        imgs_data_sub_bg = []
-        img_no = len(imgs_data)
-        for img_i in range(img_no):
-            imgs_data_sub_bg.append(imgs_data[img_i] - imgs_data[0])
-        return np.array(imgs_data_sub_bg)
-
-    def img_data_ROI_static(self, imgs_data, ROI_range):
-        img_no = len(imgs_data)
-        MCP_ROI = []
-        for img_i in range(img_no):
-            count = 0
-            for i in range(ROI_range[0][0], ROI_range[0][1]):
-                for j in range(ROI_range[1][0], ROI_range[1][1]):
-                    count = count + imgs_data[img_i][i][j]
-            MCP_ROI.append(count)
-        return np.array(MCP_ROI)
-
     def hkl_data_scan_mcp(self, scan_num):
         '''
             Extract counts and position data from MCP images in one scan,
@@ -631,21 +627,6 @@ class specdata:
         print("Reading MCP data ...")
         (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
         print("Done.")
-        print("Converting MCP data to HKL space ...")
-        img_no = len(imgs_data)
-        hkl_positions_data = np.zeros([img_no, self.MCP_pixel[0], self.MCP_pixel[1], 3])
-        for img_i in range(img_no):
-            for i in range(self.MCP_pixel[0]):
-                for j in range(self.MCP_pixel[1]):
-                    hkl_positions_data[img_i][i][j] = self.angles_2_hkl(positions_data[img_i][i][j])
-        print("Done.")
-        return (imgs_data, hkl_positions_data)
-
-    def hkl_data_mcp_imgs(self, imgs_data, positions_data):
-        '''
-            Extract counts and position data from MCP images in one scan,
-            and then map the postition data to hkl space.
-        '''
         print("Converting MCP data to HKL space ...")
         img_no = len(imgs_data)
         hkl_positions_data = np.zeros([img_no, self.MCP_pixel[0], self.MCP_pixel[1], 3])
@@ -686,50 +667,15 @@ class specdata:
                 hklc_data_filtered.append(hklc_data[i])
         return np.array(hklc_data_filtered)
 
-    def hklc_data_filter_hkl(self, hklc_data, h_range, k_range, l_range):
-        '''
-            Focus on data in ROI.
-        '''
-        hklc_data_filtered = []
-
-        i = 0
-        for i in range(len(hklc_data)):
-            [H, K, L] = hklc_data[i][0:3]
-            if H >= h_range[0] and H <= h_range[1]:
-                if K >= k_range[0] and K <= k_range[1]:
-                    if L >= l_range[0] and L <= l_range[1]:
-                        hklc_data_filtered.append(hklc_data[i])
-        return np.array(hklc_data_filtered)
-
     def hklc_data_scan_mcp(self, scan_num):
         '''
             Prepare [h, k, l, counts] data for 3d scatter plot.
         '''
-        start_time = time.time()
         # get data from single scan file
         (imgs_data, hkl_positions_data) = self.hkl_data_scan_mcp(scan_num)
 
         # processing and combine data
         hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
-
-        elapsed_time = time.time() - start_time
-        print("Time consuming: {0:.3f}s.".format(elapsed_time))
-
-        return hklc_data
-
-    def hklc_data_mcp_imgs(self, imgs_data, positions_data):
-        '''
-            Prepare [h, k, l, counts] data for 3d scatter plot.
-        '''
-        start_time = time.time()
-
-        (imgs_data, hkl_positions_data) = self.hkl_data_mcp_imgs(imgs_data, positions_data)
-
-        # processing and combine data
-        hklc_data = self.hklc_data_combiner_mcp(imgs_data, hkl_positions_data)
-
-        elapsed_time = time.time() - start_time
-        print("Time consuming: {0:.3f}s.".format(elapsed_time))
 
         return hklc_data
 
@@ -744,8 +690,7 @@ class specdata:
             v_max = -2: use different colorbar for each image
         '''
         # read data
-        #(imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
-        imgs_data = self.img_scan_mcp(scan_num)
+        (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
         [v_min, v_max] = v_range
 
         img_no = len(imgs_data) # number of images
@@ -772,21 +717,15 @@ class specdata:
 
         return
 
-    def display_scan_mcp_1(self, scan_num, snap_no, VARIABLE = '', v_range = [0, -2], sub_bg = 0, fig_size = (8, 8), show = 1, save = 0):
+    def display_scan_mcp_1(self, scan_num, v_range, snap_no, fig_size, show, save):
         '''
             v_range = [v_min, v_max]
             v_max = -1: use highest count as vmax
             v_max = -2: use different colorbar for each image
         '''
         # read data
-        #(imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
-        imgs_data = self.img_scan_mcp(scan_num)
+        (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
         [v_min, v_max] = v_range
-        TITLE = 'scan ' + str(scan_num) + ' snap ' + str(snap_no)
-
-        if VARIABLE != '':
-            var_data = self.scan_value(scan_num, VARIABLE)
-            TITLE = TITLE + ', ' + VARIABLE + ' = ' + str(round(var_data[snap_no], 2))
         
         fig = plt.figure(figsize=fig_size)
 
@@ -795,14 +734,9 @@ class specdata:
         elif v_max == -2: # use different colorbar for each image
             v_max = None
 
-        if sub_bg == 1:
-            img_data = imgs_data[snap_no] - imgs_data[0]
-        else:
-            img_data = imgs_data[snap_no]
-
         ax = fig.add_subplot(111)
-        ax.set_title(TITLE)
-        img = plt.imshow(img_data.T, origin='lower', vmin=v_min, vmax=v_max)
+        ax.set_title('scan ' + str(scan_num) + ' snap ' + str(snap_no))
+        img = plt.imshow(imgs_data[snap_no].T, origin='lower', vmin=v_min, vmax=v_max)
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.1)
         plt.colorbar(img, cax)
@@ -820,44 +754,7 @@ class specdata:
 
         return
 
-    def mark_ROI(self, img_data, ROIs, ROI_colors = [], TITLE = '', line_width = 3, font_size = 16, fig_size = (10, 10), save = 0):
-        '''
-            Mark ROIs on one MCP image.
-        '''
-        fig = plt.figure(figsize=fig_size, dpi = 200)
-        ax = fig.add_subplot(111)
-        ax.set_title(TITLE)
-        img = plt.imshow(img_data.T, origin='lower')
-
-        if ROI_colors == []:
-            ROI_colors = ['r' for i in range(len(ROIs))]
-
-        for i in range(len(ROIs)):
-            ROI_range = ROIs[i]
-            color = ROI_colors[i]
-            line_1 = [[ROI_range[0][0], ROI_range[0][1]], [ROI_range[1][0], ROI_range[1][0]]]
-            line_2 = [[ROI_range[0][1], ROI_range[0][1]], [ROI_range[1][0], ROI_range[1][1]]]
-            line_3 = [[ROI_range[0][0], ROI_range[0][1]], [ROI_range[1][1], ROI_range[1][1]]]
-            line_4 = [[ROI_range[0][0], ROI_range[0][0]], [ROI_range[1][0], ROI_range[1][1]]]
-            plt.plot(line_1[0], line_1[1], c=color, linewidth=line_width)
-            plt.plot(line_2[0], line_2[1], c=color, linewidth=line_width)
-            plt.plot(line_3[0], line_3[1], c=color, linewidth=line_width)
-            plt.plot(line_4[0], line_4[1], c=color, linewidth=line_width)
-            plt.text(ROI_range[0][0], ROI_range[1][1] + 1, 'ROI ' + str(i+1), color=color, size=font_size)
-
-        divider = make_axes_locatable(ax)
-        cax = divider.append_axes("right", size="5%", pad=0.1)
-        plt.colorbar(img, cax)
-        fig.tight_layout()
-        if save == 1:
-            if TITLE == '':
-                TITLE = 'untitled_MCP_img'
-            DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/' + TITLE + '_ROI' + '.png'
-            plt.savefig(DIR, dpi = 150, format = 'png')
-        plt.show()
-        return
-
-    def animation_scan_mcp(self, scan_num, VARIABLE = '', v_range = [0, -1], sub_bg = 0, fig_size = (10, 10), font_size = 20, show = 1, clean = 1):
+    def animation_scan_mcp(self, scan_num, v_range, fig_size, font_size, show = 1, clean = 1):
         '''
             Generate animations with specified MCP scan_num.
             v_range = [v_min, v_max]
@@ -866,82 +763,16 @@ class specdata:
         start_time = time.time()
 
         # read data
-        #(imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
-        imgs_data = self.img_scan_mcp(scan_num)
+        (imgs_data, positions_data) = self.img_data_scan_mcp(scan_num)
         [v_min, v_max] = v_range
         if v_max == -1: # use highest count as vmax
             v_max = np.amax(imgs_data)
-
-        if VARIABLE != '':
-            var_data = self.scan_value(scan_num, VARIABLE)
 
         # prepare directory
         DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/scan_' + str(scan_num).zfill(3)
         if not os.path.exists(DIR):
             os.makedirs(DIR)
         DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
-
-        # subtract backgound
-        if sub_bg == 1:
-            imgs_data = self.img_data_subtract_bg(imgs_data)
-            DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '_subbg.mp4'
-
-        # plotting
-        print("Start generating images...")
-        for snap_no in range(len(imgs_data)):
-            fig = plt.figure(figsize=fig_size)
-            plt.rcParams.update({'font.size': font_size})
-
-            ax = fig.add_subplot(111)
-            TITLE = 'snap ' + str(snap_no)
-            if VARIABLE != '':
-                TITLE = TITLE + ', ' + VARIABLE + ' = ' + str(round(var_data[snap_no], 2))
-            ax.set_title(TITLE)
-            img = plt.imshow(imgs_data[snap_no].T, origin='lower', vmin=v_min, vmax=v_max)
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.1)
-            plt.colorbar(img, cax)
-
-            fig.tight_layout()
-            plt.savefig(DIR + '/snap_' + str(snap_no).zfill(2) + '.png', dpi = 150, format = 'png')
-            plt.close()
-        print("Done.")
-
-        # generate animation using ffmpeg
-        print("Start generating animation...")
-        os.system("ffmpeg -r 5 -i " + DIR + "/snap_%02d.png" 
-                  + " -vcodec mpeg4 -y " + DIR_movie)
-        print("Done.")
-        # delete all figures
-        if clean == 1:
-            shutil.rmtree(DIR)
-            print("All images are deleted.")
-
-        elapsed_time = time.time() - start_time
-        print("Time consuming: {0:.3f}s.".format(elapsed_time))
-
-        if show == 1:
-            return Video(DIR_movie, width=600, height=600)
-
-        return
-
-    def animation_mcp_imgs(self, imgs_data, v_range = [0, -1], fig_size = (10, 10), font_size = 20, show = 1, clean = 1):
-        '''
-            Generate animations with imgs_data.
-            v_range = [v_min, v_max]
-            v_max = -1: use highest count as vmax
-        '''
-        start_time = time.time()
-
-        [v_min, v_max] = v_range
-        if v_max == -1: # use highest count as vmax
-            v_max = np.amax(imgs_data)
-
-        # prepare directory
-        DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/img_sub'
-        if not os.path.exists(DIR):
-            os.makedirs(DIR)
-        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_img_sub.mp4'
 
         # plotting
         print("Start generating images...")
@@ -951,7 +782,7 @@ class specdata:
 
             ax = fig.add_subplot(111)
             ax.set_title('snap ' + str(snap_no))
-            img = plt.imshow(imgs_data[snap_no].T, vmin=v_min, vmax=v_max)
+            img = plt.imshow(imgs_data[snap_no], vmin=v_min, vmax=v_max)
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.1)
             plt.colorbar(img, cax)
@@ -1030,10 +861,10 @@ class specdata:
         # prepare
         db = np.transpose(hklc_data_filtered)
 
-        fig = plt.figure(figsize = (10, 7), dpi = 200)
+        fig = plt.figure(figsize = (10, 7))
         ax = fig.add_subplot(111, projection='3d')
         if log == 0:
-            img = ax.scatter(db[0], db[1], db[2], c=db[3], cmap = colormap, edgecolor = 'none', s=marker_size)
+            img = ax.scatter(db[0], db[1], db[2], c=db[3], cmap = colormap)
         elif log == 1:
             img = ax.scatter(db[0], db[1], db[2], c=np.log(db[3]), cmap = colormap, edgecolor = 'none', s=marker_size)
         fig.colorbar(img, shrink=0.85)
@@ -1060,78 +891,6 @@ class specdata:
     #######################################################################
     ############################## visualize ##############################
     #######################################################################
-    def plot_scan(self, scan_nums, VARIABLE, DETECTOR, I0_BD3, linestyle, fig_size, font_size, TITLE = ''):
-        plt.figure(figsize=fig_size)
-        plt.rcParams.update({'font.size': font_size})
-        for scan_num in scan_nums:
-            x = self.scan_value(scan_num, VARIABLE)
-            y = self.scan_value(scan_num, DETECTOR)
-            if I0_BD3 == 1:
-                y = y / self.scan_value(scan_num, 'I0_BD3')
-            plt.plot(x, y, linestyle)
-        legends = ['scan #' + legend for legend in list(map(str, scan_nums))]
-        plt.xlabel(VARIABLE)
-        plt.ylabel(DETECTOR)
-        plt.legend(legends)
-        plt.title(TITLE)
-        plt.show()
-        return
-
-    def quick_plot(self, scan_nums, VARIABLE, DETECTOR, legends = '', smooth = 1, sort = 0, fig_size = (14, 7), font_size = 18, I0_BD3 = 1, xlabel = '', ylabel = '', TITLE = ''):
-        '''
-            A quick visualize of data.
-        '''
-        # prepare data
-        x = []
-        y = []
-        for scan_num in scan_nums:
-            x.append(self.scan_value(scan_num, VARIABLE))
-            if I0_BD3 == 1:
-                y.append(self.scan_value(scan_num, DETECTOR) / self.scan_value(scan_num, 'I0_BD3'))
-            else:
-                y.append(self.scan_value(scan_num, DETECTOR))
-
-        # sort by variables
-        if sort == 1:
-            for i in range(len(y)):
-                db = [x[i], y[i]]
-                temp = np.transpose(db)
-                db = np.transpose(temp[temp[:, 0].argsort()])
-                [x[i], y[i]] = db
-
-        x = np.array(x)
-        y = np.array(y)
-
-        # plot
-        plt.figure(figsize=fig_size, dpi = 200)
-        plt.rcParams.update({'font.size': font_size})
-        colors = plt.cm.jet(np.linspace(0.1, 0.9, len(y)))
-
-        if smooth == 0:
-            for i in range(len(y)):
-                plt.plot(x[i], y[i], 'o-', color = colors[i])
-        else:
-            for i in range(len(y)):
-                plt.plot(x[i], y[i], 'o', color = colors[i])
-            for i in range(len(y)):
-                xx = np.linspace(x[i].min(), x[i].max(), 200)
-                y_interp = interp1d(x[i], y[i], kind='cubic')
-                y_smooth = savgol_filter(y_interp(xx), 13, 3)
-                plt.plot(xx, y_smooth, '-', color = colors[i])
-
-        if xlabel == '':
-            xlabel = VARIABLE
-        if ylabel == '':
-            ylabel = DETECTOR
-        
-        plt.colormaps
-        plt.xlabel(xlabel)
-        plt.ylabel(ylabel)
-        if legends != '':
-            plt.legend(legends)
-        plt.title(TITLE)
-        plt.show()
-        return
 
     def plot_ascan(self, scan_nums, DETECTOR, I0_BD3, fig_size, font_size, data_legends, LEGEND_PREFIX, LEGEND_SUFFIX, TITLE = ''):
         '''
@@ -1186,7 +945,7 @@ class specdata:
                 plt.plot(datablock[i][0], datablock[i][det]/datablock[i][1], label = LEGEND_PREFIX + str(legend) + LEGEND_SUFFIX)
                 i = i + 1
         else:
-            raise ValueError('I0_BD3 must be 0 or 1!')
+            raise ValueError('IO_BD3 must be 0 or 1!')
 
         plt.xlabel('th')
         plt.ylabel(DETECTOR)
@@ -1248,7 +1007,7 @@ class specdata:
                 plt.plot(datablock[i][0], datablock[i][det]/datablock[i][2], label = LEGEND_PREFIX + str(legend) + LEGEND_SUFFIX)
                 i = i + 1
         else:
-            raise ValueError('I0_BD3 must be 0 or 1!')
+            raise ValueError('IO_BD3 must be 0 or 1!')
 
         plt.xlabel('tth')
         plt.ylabel(DETECTOR)
