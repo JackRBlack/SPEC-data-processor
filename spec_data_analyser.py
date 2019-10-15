@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.2.0 - ROI_debug")
-print("Last Update: 2019.09.27")
+print("Version: 1.2.1 - scatter bug solved")
+print("Last Update: 2019.10.15")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -1030,12 +1030,12 @@ class specdata:
         # prepare
         db = np.transpose(hklc_data_filtered)
 
-        fig = plt.figure(figsize = (10, 7), dpi = 200)
+        fig = plt.figure(figsize = (10, 7))
         ax = fig.add_subplot(111, projection='3d')
         if log == 0:
-            img = ax.scatter(db[0], db[1], db[2], c=db[3], cmap = colormap, edgecolor = 'none', s=marker_size)
+            img = ax.scatter(db[0], db[1], db[2], c=db[3], cmap = colormap, linewidths = 0, s=marker_size)
         elif log == 1:
-            img = ax.scatter(db[0], db[1], db[2], c=np.log(db[3]), cmap = colormap, edgecolor = 'none', s=marker_size)
+            img = ax.scatter(db[0], db[1], db[2], c=np.log(db[3]), cmap = colormap, linewidths = 0, s=marker_size)
         fig.colorbar(img, shrink=0.85)
         ax.set_xlabel('H')
         ax.set_ylabel('K')
