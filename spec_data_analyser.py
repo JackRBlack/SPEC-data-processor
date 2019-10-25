@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.2.1 - scatter bug solved")
-print("Last Update: 2019.10.15")
+print("Version: 1.2.3 - scatter_HKL updated")
+print("Last Update: 2019.10.25")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -845,9 +845,14 @@ class specdata:
             plt.plot(line_4[0], line_4[1], c=color, linewidth=line_width)
             plt.text(ROI_range[0][0], ROI_range[1][1] + 1, 'ROI ' + str(i+1), color=color, size=font_size)
 
+        plt.xlabel('pixel')
+        plt.ylabel('pixel')
+
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.1)
-        plt.colorbar(img, cax)
+        #plt.colorbar(img, cax)
+        clb = plt.colorbar(img, cax)
+        clb.set_label('counts / second', labelpad=15, rotation=-90)
         fig.tight_layout()
         if save == 1:
             if TITLE == '':
@@ -1124,7 +1129,7 @@ class specdata:
         if ylabel == '':
             ylabel = DETECTOR
         
-        plt.colormaps
+        #plt.colormaps
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         if legends != '':
