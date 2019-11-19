@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.2.3 - scatter_HKL updated")
-print("Last Update: 2019.10.25")
+print("Version: 1.2.4 - mark_ROI high saving resolution")
+print("Last Update: 2019.11.13")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -858,7 +858,7 @@ class specdata:
             if TITLE == '':
                 TITLE = 'untitled_MCP_img'
             DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/' + TITLE + '_ROI' + '.png'
-            plt.savefig(DIR, dpi = 150, format = 'png')
+            plt.savefig(DIR, dpi = 300, format = 'png')
         plt.show()
         return
 
