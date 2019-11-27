@@ -2,11 +2,12 @@
 
 Analysis spec data in Python.
 
-<img src="./screenshot.png" alt="Screenshot of codes." style='height: 100%; width: 100%; object-fit: contain'>
+<img src="./screenshot_1.3.0.png" alt="Screenshot of codes." style='height: 100%; width: 100%; object-fit: contain'>
 
-### Updates 0.1.1
-* Added a function to average data in a more elegent way.
-* Modified the background subtracting function to support a2scan.
+### Updates 1.3.0
+
+* Added a function to generate MCP animations by wireframe.
+* Adapted to object oriented programming (from version 1.0.0).
 
 ## What is this project?
 
@@ -22,7 +23,10 @@ Due to the limitation of the current version of this program, you need to use <a
 
 After that, import my code in your python script. For example,
 ```python
-from spec_data_analysis import *
+from spec_data_analyser import *
+
+example = specdata()
+example.PROJECT_NAME = "Hello_World"
 ```
 
 Then you are ready to do anything you want! To know what each function does, read the function's description. You can also find examples there. Have fun!
