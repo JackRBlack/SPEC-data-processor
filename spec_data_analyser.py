@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.2.4 - mark_ROI high saving resolution")
-print("Last Update: 2019.11.13")
+print("Version: 1.3.0 - +[animation_mcp_wireframe]")
+print("Last Update: 2019.11.27")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -820,6 +820,28 @@ class specdata:
 
         return
 
+    def display_mcp(self, img_data, fig_size = (8, 8), v_range = [0, -1]):
+        '''
+            v_range = [v_min, v_max]
+            v_max = -1: use highest count as vmax
+            v_max = -2: use different colorbar for each image
+        '''
+        [v_min, v_max] = v_range
+        if v_max == -1: # use highest count as vmax
+            v_max = np.amax(img_data)
+
+        fig = plt.figure(figsize=fig_size)
+
+        ax = fig.add_subplot(111)
+        img = plt.imshow(img_data.T, origin='lower', vmin=v_min, vmax=v_max)
+        divider = make_axes_locatable(ax)
+        cax = divider.append_axes("right", size="5%", pad=0.1)
+        plt.colorbar(img, cax)
+
+        fig.tight_layout()
+        plt.show()
+        return
+
     def mark_ROI(self, img_data, ROIs, ROI_colors = [], TITLE = '', line_width = 3, font_size = 16, fig_size = (10, 10), save = 0):
         '''
             Mark ROIs on one MCP image.
@@ -984,6 +1006,176 @@ class specdata:
 
         return
 
+    def display_mcp_wireframe(self, imgs_data, snap_no, TITLE, z_max = -1, angle = (20, 30), fig_size = (5, 5), show = 1, save = 0, saveflag = 0):
+        '''
+            Display mcp image by wireframe for imgs_data[snap_no].
+            z_max = -1: use highest count in imgs_data as z_max
+            z_max = -2: use highest count in imgs_data[snap_shot] as z_max
+        '''
+        # get data
+        img_data = imgs_data[snap_no]
+
+        # plot
+        fig = plt.figure(figsize=fig_size, dpi = 200)
+        ax = fig.gca(projection='3d')
+
+        # prepare data
+        x = np.linspace(0, 1, self.MCP_pixel[0])
+        y = np.linspace(0, 1, self.MCP_pixel[1])
+        X, Y = np.meshgrid(x, y)
+        Z = img_data
+
+        # plot wireframe
+        surf = ax.plot_wireframe(X, Y, Z, color='g', linewidth=0.4, rcount = 64, ccount = 64)
+
+        # set z_max
+        if z_max == -1:
+            z_max = np.max(imgs_data)
+        elif z_max == -2:
+            z_max = np.max(img_data)
+        ax.set_zlim(0, z_max)
+
+        # clear ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_zticks([])
+
+        # set axis color to white
+        ax.w_xaxis.line.set_color('w')
+        ax.w_yaxis.line.set_color('w')
+        ax.w_zaxis.line.set_color('w')
+
+        # set edge color to white
+        ax.xaxis.pane.set_edgecolor('w')
+        ax.yaxis.pane.set_edgecolor('w')
+        ax.zaxis.pane.set_edgecolor('w')
+
+        # clear grids
+        ax.grid(False)
+
+        # set rotation angle
+        (Elev, Azim) = angle
+        ax.view_init(elev=Elev, azim=Azim)
+
+        plt.title(TITLE)
+        plt.tight_layout()
+        
+        if save == 1:
+            # prepare directory
+            DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/wireframe/'
+            if not os.path.exists(DIR):
+                os.makedirs(DIR)
+            plt.savefig(DIR + 'wireframe_' + str(saveflag).zfill(3) + '.png', dpi = 200, format = 'png')
+
+        if show == 1:
+            plt.show()
+        elif show == 0:
+            plt.close(fig)
+        return
+
+    def animation_mcp_wireframe(self, scan_num, TITLE_DETECTOR, TITLE_PREFIX, TITLE_SUFFIX, MOVIE_NAME = 'wireframe', order = 1, decimeter = 1, angle = (20, 30), fig_size = (5, 5), clean = 1, show = 1):
+        '''
+            Generate mcp animation with wireframe for scan No.scan_num.
+            order =  1: positive sequence (as scan goes)
+            order = -1: negative sequence
+        '''
+        start_time = time.time()
+
+        # get data
+        imgs_data = self.img_scan_mcp(scan_num)
+        variable = self.scan_value(scan_num, TITLE_DETECTOR)
+
+        # prepare directory
+        DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/wireframe'
+        if not os.path.exists(DIR):
+            os.makedirs(DIR)
+        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_' + MOVIE_NAME + '.mp4'
+
+        # generate plots
+        print("Start generating images...")
+        if order == 1:
+            for i in range(len(imgs_data)):
+                snap_no = i
+                TITLE = TITLE_PREFIX + str(np.around(variable[snap_no], decimeter)) + TITLE_SUFFIX
+                self.display_mcp_wireframe(imgs_data, snap_no, TITLE, angle = angle, fig_size = fig_size, show = 0, save = 1, saveflag = i)
+        elif order == -1:
+            for i in range(len(imgs_data)):
+                snap_no = len(imgs_data) - i - 1
+                TITLE = TITLE_PREFIX + str(np.around(variable[snap_no], decimeter)) + TITLE_SUFFIX
+                self.display_mcp_wireframe(imgs_data, snap_no, TITLE, angle = angle, fig_size = fig_size, show = 0, save = 1, saveflag = i)
+        print("Done.")
+
+        # generate animation using ffmpeg
+        print("Start generating animation...")
+        os.system("ffmpeg -r 5 -i " + DIR + "/wireframe_%03d.png" 
+                  + " -vcodec mpeg4 -y " + DIR_movie)
+        print("Done.")
+
+        # delete all figures
+        if clean == 1:
+            shutil.rmtree(DIR)
+            print("All images are deleted.")
+
+        elapsed_time = time.time() - start_time
+        print("Time consuming: {0:.3f}s.".format(elapsed_time))
+
+        if show == 1:
+            return Video(DIR_movie, width=600, height=600)
+
+        return
+
+    def animation_mcp_wireframe_sub(self, scan_nums, TITLE_DETECTOR, TITLE_PREFIX, TITLE_SUFFIX, MOVIE_NAME = 'wireframe', order = 1, decimeter = 1, angle = (20, 30), fig_size = (5, 5), clean = 1, show = 1):
+        '''
+            Generate mcp animation with wireframe for scan No.scan_nums[0] - No.scan_nums[1].
+            order =  1: positive sequence (as scan goes)
+            order = -1: negative sequence
+        '''
+        start_time = time.time()
+
+        # get data
+        imgs_data = self.img_scan_mcp(scan_nums[0]) - self.img_scan_mcp(scan_nums[1])
+        variable = self.scan_value(scan_nums[0], TITLE_DETECTOR)
+
+        # prepare directory
+        DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/wireframe'
+        if not os.path.exists(DIR):
+            os.makedirs(DIR)
+        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_' + MOVIE_NAME + '.mp4'
+
+        # generate plots
+        print("Start generating images...")
+        if order == 1:
+            for i in range(len(imgs_data)):
+                snap_no = i
+                TITLE = TITLE_PREFIX + str(np.around(variable[snap_no], decimeter)) + TITLE_SUFFIX
+                self.display_mcp_wireframe(imgs_data, snap_no, TITLE, angle = angle, fig_size = fig_size, show = 0, save = 1, saveflag = i)
+        elif order == -1:
+            for i in range(len(imgs_data)):
+                snap_no = len(imgs_data) - i - 1
+                TITLE = TITLE_PREFIX + str(np.around(variable[snap_no], decimeter)) + TITLE_SUFFIX
+                self.display_mcp_wireframe(imgs_data, snap_no, TITLE, angle = angle, fig_size = fig_size, show = 0, save = 1, saveflag = i)
+        print("Done.")
+
+        # generate animation using ffmpeg
+        print("Start generating animation...")
+        os.system("ffmpeg -r 5 -i " + DIR + "/wireframe_%03d.png" 
+                  + " -vcodec mpeg4 -y " + DIR_movie)
+        print("Done.")
+
+        # delete all figures
+        if clean == 1:
+            shutil.rmtree(DIR)
+            print("All images are deleted.")
+
+        elapsed_time = time.time() - start_time
+        print("Time consuming: {0:.3f}s.".format(elapsed_time))
+
+        if show == 1:
+            return Video(DIR_movie, width=600, height=600)
+
+        return
+
+
     def new_colormaps(self):
         '''
             Define several new colormaps
@@ -1137,6 +1329,10 @@ class specdata:
         plt.title(TITLE)
         plt.show()
         return
+
+    #############################################################################
+    ################################### Trash ###################################
+    #############################################################################
 
     def plot_ascan(self, scan_nums, DETECTOR, I0_BD3, fig_size, font_size, data_legends, LEGEND_PREFIX, LEGEND_SUFFIX, TITLE = ''):
         '''
