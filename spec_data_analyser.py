@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.3.0 - +[animation_mcp_wireframe]")
-print("Last Update: 2019.11.27")
+print("Version: 1.3.9 - +[global control keys]")
+print("Last Update: 2020.01.14")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -37,8 +37,22 @@ class specdata:
 
         # spectrometer
         self.R = 300 # scattering radius in mm
+
+        # MCP detector
         self.MCP_size = np.array([25, 25]) # width x height in mm
         self.MCP_pixel = np.array([128, 128])
+        self.MCP_response_img_data = np.zeros([128, 128])
+        self.MCP_nonlinear_repair_method_dict = {'NONE' : self.img_data_mcp_nonlinear_NONE,
+                                                 '2nd' : self.img_data_mcp_nonlinear_2nd,
+                                                 '3rd' : self.img_data_mcp_nonlinear_3rd}
+        self.MCP_nonlinear_repair_method_key = 'NONE'
+        self.MCP_nonlinear_repair_method_params = None
+
+        # global switch
+        self.ctps_key = False # all relative variables to 'per second' unit
+        self.I0_BD3_key = False # all relative variables divided by I0_BD3
+        self.MCP_nonlinear_repair_key = False
+        self.MCP_non_uniform_repair_key = False
 
     #########################################################################
     ############################## preparation ##############################
@@ -85,8 +99,16 @@ class specdata:
         print()
         print("======= Spectrometer Constant ========")
         print(f"scattering radius = {self.R} mm")
+        print()
+        print("======= MCP Detector Constant ========")
         print(f"MCP size = {self.MCP_size} mm x mm")
         print(f"MCP pixels = {self.MCP_pixel}")
+        print()
+        print("========= Global Switch List =========")
+        print(f"Use per second unit: {self.ctps_key}")
+        print(f"Divided by I0_BD3: {self.I0_BD3_key}")
+        print(f"Repair MCP nonlinear response: {self.MCP_nonlinear_repair_key}")
+        print(f"Repair MCP non-uniform response: {self.MCP_non_uniform_repair_key}")
         return
 
     ######################################################################
@@ -112,6 +134,7 @@ class specdata:
         DIR3 = './' + self.PROJECT_NAME + '/Data/Rawdata'
         DIR4 = './' + self.PROJECT_NAME + '/Data/MCP_images'
         DIR5 = './' + self.PROJECT_NAME + '/Data/hklc_data'
+        DIR6 = './' + self.PROJECT_NAME + '/Data/MCP_data'
         if not os.path.exists(DIR1):
             os.makedirs(DIR1)
         if not os.path.exists(DIR2):
@@ -122,6 +145,8 @@ class specdata:
             os.makedirs(DIR4)
         if not os.path.exists(DIR5):
             os.makedirs(DIR5)
+        if not os.path.exists(DIR6):
+            os.makedirs(DIR6)
 
         # create log file
         #self.create_log()
@@ -399,6 +424,19 @@ class specdata:
                 print(f.readline())
         return
 
+    def get_exposure_time(self, scan_num):
+        FILENAME = self.scan_filename(scan_num)
+        with open(FILENAME) as f:
+            COMMAND = f.readline()[0:-1]
+            strings = COMMAND.split(' ')
+            if strings[-1] == 'fixQ': # special care for EfixQ scan
+                exposure_time = float(strings[-2])
+            elif strings[4] == 'tscan': # special care for tscan
+                exposure_time = float(strings[-2])
+            else: # for most scans
+                exposure_time = float(strings[-1])
+        return exposure_time
+
     def get_T(self, scan_nums):
         T = []
         for scan_num in scan_nums:
@@ -484,7 +522,68 @@ class specdata:
     ############################## process MCP data ################################
     ################################################################################
 
-    def img_scan_mcp(self, scan_num):
+    def img_data_mcp_nonlinear_NONE(self, img_data, params):
+        return img_data
+
+    def img_data_mcp_nonlinear_2nd(self, img_data, params):
+        a = params
+        MCP_total = np.sum(img_data)
+        MCP_total_repaired = -0.5 / a * (1 - np.sqrt(1 + 4 * a * MCP_total))
+        scale = MCP_total_repaired / MCP_total
+        img_data_repaired = img_data * scale
+        return img_data_repaired
+
+    def img_data_mcp_nonlinear_3rd(self, img_data, params):
+        print('Debug: 3rd order repairing method has been called.')
+        img_data_repaired = img_data
+        return img_data_repaired
+
+    def img_data_mcp_nonlinear_repair(self, img_data, METHOD, params):
+        '''
+            Repair MCP nonlinear response with METHOD from
+                '2nd', '3rd' and '???'
+
+            !!! Input img_data should have the unit of counts per second! !!!
+
+            Return: repaired img_data
+        '''
+        img_data_repaired = self.MCP_nonlinear_repair_method_dict[METHOD](img_data, params)
+        return img_data_repaired
+
+    def img_data_round_filter(self, img_data, center, radius):
+        '''
+            Apply an artificial hole-filter (to get rid of noise outside of the detecting area).
+        '''
+        img_data_filtered = img_data.copy()
+        R_square = radius ** 2 # accelerate speed
+        X, Y = center # for CLS, center = [63, 66], radius = 58
+        for i in range(self.MCP_pixel[0]):
+            for j in range(self.MCP_pixel[0]):
+                if (i - X) ** 2 + (j - Y) ** 2 > R_square:
+                    img_data_filtered[i][j] = 0
+        return img_data_filtered
+
+    def img_data_save(self, img_data, FILENAME):
+        DIR = './' + self.PROJECT_NAME + '/Data/MCP_data/' + FILENAME
+        np.save(DIR, img_data)
+        print("MCP image data has been successfully saved.")
+        return
+
+    def img_data_load_mcp_response(self, FILENAME, rescale = True):
+        '''
+            Load MCP response data for correction.
+        '''
+        DIR = './' + self.PROJECT_NAME + '/Data/MCP_data/' + FILENAME
+        try:
+            self.MCP_response_img_data = np.load(DIR)
+            if rescale:
+                self.MCP_response_img_data = self.MCP_response_img_data / np.max(self.MCP_response_img_data)
+            print('MCP response data has been successfully loaded.')
+        except FileNotFoundError:
+            print('File does not exist!')
+        return
+
+    def img_scan_mcp(self, scan_num, repair = True):
         '''
             Just extract img data, does not care about position info.
         '''
@@ -522,9 +621,30 @@ class specdata:
 
             img_i = img_i + 1
 
+        # transform the unit to counts per second
+        if self.ctps_key:
+            imgs_data = imgs_data / self.get_exposure_time(scan_num)
+            #imgs_data = imgs_data / 2.0 # debug
+
+        # repair MCP nonlinear response
+        if self.MCP_nonlinear_repair_key:
+            for i in range(len(imgs_data)):
+                imgs_data[i] = self.img_data_mcp_nonlinear_repair(imgs_data[i], self.MCP_nonlinear_repair_method_key, self.MCP_nonlinear_repair_method_params)
+
+        # repair MCP by response data (self.MCP_response_img_data)
+        if self.MCP_non_uniform_repair_key and repair and self.MCP_response_img_data.any() != 0: 
+            imgs_data = np.true_divide(imgs_data.copy(), self.MCP_response_img_data, where=(self.MCP_response_img_data!=0))
+            # I still don't understand why .copy() is needed here. 
+            # Without this copy, when self.stps_key = True, "where=(self.MCP_response_img_data!=0)" will not perform correctly.
+
+        # divided by I0_BD3
+        if self.I0_BD3_key:
+            I0_BD3 = self.scan_value(scan_num, 'I0_BD3') / self.get_exposure_time(scan_num)
+            imgs_data = imgs_data / I0_BD3[:, np.newaxis, np.newaxis]
+
         return imgs_data
 
-    def img_data_scan_mcp(self, scan_num):
+    def img_data_scan_mcp(self, scan_num, repair = True):
         '''
             Extract counts and position data from MCP images in one scan.
         '''
@@ -592,6 +712,27 @@ class specdata:
                     positions_data[img_i][i][j] = [th[img_i], tth[i], z[j]]
 
             img_i = img_i + 1
+
+        # transform the unit to counts per second
+        if self.ctps_key:
+            imgs_data = imgs_data / self.get_exposure_time(scan_num)
+            #imgs_data = imgs_data / 2.0 # debug
+
+        # repair MCP nonlinear response
+        if self.MCP_nonlinear_repair_key:
+            for i in range(len(imgs_data)):
+                imgs_data[i] = self.img_data_mcp_nonlinear_repair(imgs_data[i], self.MCP_nonlinear_repair_method_key, self.MCP_nonlinear_repair_method_params)
+
+        # repair MCP by response data (self.MCP_response_img_data)
+        if self.MCP_non_uniform_repair_key and repair and self.MCP_response_img_data.any() != 0: 
+            imgs_data = np.true_divide(imgs_data.copy(), self.MCP_response_img_data, where=(self.MCP_response_img_data!=0))
+            # I still don't understand why .copy() is needed here. 
+            # Without this copy, when self.stps_key = True, "where=(self.MCP_response_img_data!=0)" will not perform correctly.
+
+        # divided by I0_BD3
+        if self.I0_BD3_key:
+            I0_BD3 = self.scan_value(scan_num, 'I0_BD3') / self.get_exposure_time(scan_num)
+            imgs_data = imgs_data / I0_BD3[:, np.newaxis, np.newaxis]
 
         return (imgs_data, positions_data)
 
@@ -820,7 +961,7 @@ class specdata:
 
         return
 
-    def display_mcp(self, img_data, fig_size = (8, 8), v_range = [0, -1]):
+    def display_mcp(self, img_data, fig_size = (5, 5), font_size = 8, v_range = [0, -1], save = False, FILENAME = 'untitled'):
         '''
             v_range = [v_min, v_max]
             v_max = -1: use highest count as vmax
@@ -830,15 +971,23 @@ class specdata:
         if v_max == -1: # use highest count as vmax
             v_max = np.amax(img_data)
 
-        fig = plt.figure(figsize=fig_size)
-
+        fig = plt.figure(figsize=fig_size, dpi = 200)
+        plt.rcParams.update({'font.size': font_size})
         ax = fig.add_subplot(111)
         img = plt.imshow(img_data.T, origin='lower', vmin=v_min, vmax=v_max)
+        plt.xlabel('pixel')
+        plt.ylabel('pixel')
         divider = make_axes_locatable(ax)
         cax = divider.append_axes("right", size="5%", pad=0.1)
+        clb = plt.colorbar(img, cax)
         plt.colorbar(img, cax)
-
+        clb.set_label('intensity (arb. unit)', labelpad=15, rotation=-90)
         fig.tight_layout()
+
+        if save:
+            DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/MCP_img_' + FILENAME + '.png'
+            plt.savefig(DIR, dpi = 150, format = 'png')
+
         plt.show()
         return
 
@@ -968,7 +1117,7 @@ class specdata:
         DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/img_sub'
         if not os.path.exists(DIR):
             os.makedirs(DIR)
-        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_img_sub.mp4'
+        DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_imgs.mp4'
 
         # plotting
         print("Start generating images...")
@@ -978,7 +1127,7 @@ class specdata:
 
             ax = fig.add_subplot(111)
             ax.set_title('snap ' + str(snap_no))
-            img = plt.imshow(imgs_data[snap_no].T, vmin=v_min, vmax=v_max)
+            img = plt.imshow(imgs_data[snap_no].T, origin='lower', vmin=v_min, vmax=v_max)
             divider = make_axes_locatable(ax)
             cax = divider.append_axes("right", size="5%", pad=0.1)
             plt.colorbar(img, cax)
@@ -1006,7 +1155,69 @@ class specdata:
 
         return
 
-    def display_mcp_wireframe(self, imgs_data, snap_no, TITLE, z_max = -1, angle = (20, 30), fig_size = (5, 5), show = 1, save = 0, saveflag = 0):
+    def display_mcp_wireframe_1(self, img_data, frame_color = 'g', TITLE = '', z_max = -2, angle = (20, -60), fig_size = (5, 5), save = False, FILENAME = 'untitled'):
+        '''
+            Display mcp image by wireframe for img_data.
+            z_max = -1: use highest count in imgs_data as z_max
+            z_max = -2: use highest count in imgs_data[snap_shot] as z_max
+        '''
+        # plot
+        fig = plt.figure(figsize=fig_size, dpi = 200)
+        plt.rcParams.update({'font.size': 10})
+        ax = fig.gca(projection='3d')
+
+        # prepare data
+        x = np.linspace(0, 1, self.MCP_pixel[0])
+        y = np.linspace(0, 1, self.MCP_pixel[1])
+        X, Y = np.meshgrid(x, y)
+        Z = img_data.T
+
+        # plot wireframe
+        surf = ax.plot_wireframe(X, Y, Z, color=frame_color, linewidth=0.4, rcount = 64, ccount = 64)
+
+        # set z_max
+        if z_max == -2:
+            z_max = np.max(img_data)
+        ax.set_zlim(0, z_max)
+
+        # clear ticks
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_zticks([])
+
+        # set axis color to white
+        ax.w_xaxis.line.set_color('w')
+        ax.w_yaxis.line.set_color('w')
+        ax.w_zaxis.line.set_color('w')
+
+        # set edge color to white
+        ax.xaxis.pane.set_edgecolor('w')
+        ax.yaxis.pane.set_edgecolor('w')
+        ax.zaxis.pane.set_edgecolor('w')
+
+        # clear grids
+        ax.grid(False)
+
+        # set rotation angle
+        (Elev, Azim) = angle
+        ax.view_init(elev=Elev, azim=Azim)
+
+        if TITLE != '':
+            plt.title(TITLE)
+        plt.tight_layout()
+        
+        if save:
+            # prepare directory
+            DIR = './' + self.PROJECT_NAME + '/Data/MCP_images/wireframe/'
+            if not os.path.exists(DIR):
+                os.makedirs(DIR)
+            plt.savefig(DIR + 'wireframe_' + FILENAME + '.png', dpi = 200, format = 'png')
+
+        plt.show()
+
+        return
+
+    def display_mcp_wireframe(self, imgs_data, snap_no, TITLE, z_max = -1, angle = (20, -60), fig_size = (5, 5), show = 1, save = 0, saveflag = 0):
         '''
             Display mcp image by wireframe for imgs_data[snap_no].
             z_max = -1: use highest count in imgs_data as z_max
@@ -1017,13 +1228,14 @@ class specdata:
 
         # plot
         fig = plt.figure(figsize=fig_size, dpi = 200)
+        plt.rcParams.update({'font.size': 10})
         ax = fig.gca(projection='3d')
 
         # prepare data
         x = np.linspace(0, 1, self.MCP_pixel[0])
         y = np.linspace(0, 1, self.MCP_pixel[1])
         X, Y = np.meshgrid(x, y)
-        Z = img_data
+        Z = img_data.T
 
         # plot wireframe
         surf = ax.plot_wireframe(X, Y, Z, color='g', linewidth=0.4, rcount = 64, ccount = 64)
@@ -1078,6 +1290,9 @@ class specdata:
             Generate mcp animation with wireframe for scan No.scan_num.
             order =  1: positive sequence (as scan goes)
             order = -1: negative sequence
+
+            2020.01.13
+            to-do: using img_data instead of imgs_data when generating individual images.
         '''
         start_time = time.time()
 
