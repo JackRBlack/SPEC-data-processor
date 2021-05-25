@@ -1,8 +1,8 @@
 ########## INFO ##########
 print("########################################")
 print("Project: spec_data_analyser")
-print("Version: 1.3.9 - +[global control keys]")
-print("Last Update: 2020.01.14")
+print("Version: 1.4.5 - +[SDD_ROI sum 2 average]")
+print("Last Update: 2021.05.25")
 print("----------------------------------------")
 print("Author: Wenjie Chen")
 print("E-mail: wenjiechen@pku.edu.cn")
@@ -42,6 +42,7 @@ class specdata:
         self.MCP_size = np.array([25, 25]) # width x height in mm
         self.MCP_pixel = np.array([128, 128])
         self.MCP_response_img_data = np.zeros([128, 128])
+        self.MCP_effective_pixels = 128 * 128
         self.MCP_nonlinear_repair_method_dict = {'NONE' : self.img_data_mcp_nonlinear_NONE,
                                                  '2nd' : self.img_data_mcp_nonlinear_2nd,
                                                  '3rd' : self.img_data_mcp_nonlinear_3rd}
@@ -135,18 +136,25 @@ class specdata:
         DIR4 = './' + self.PROJECT_NAME + '/Data/MCP_images'
         DIR5 = './' + self.PROJECT_NAME + '/Data/hklc_data'
         DIR6 = './' + self.PROJECT_NAME + '/Data/MCP_data'
-        if not os.path.exists(DIR1):
-            os.makedirs(DIR1)
-        if not os.path.exists(DIR2):
-            os.makedirs(DIR2)
-        if not os.path.exists(DIR3):
-            os.makedirs(DIR3)
-        if not os.path.exists(DIR4):
-            os.makedirs(DIR4)
-        if not os.path.exists(DIR5):
-            os.makedirs(DIR5)
-        if not os.path.exists(DIR6):
-            os.makedirs(DIR6)
+        DIR7 = './' + self.PROJECT_NAME + '/Data/Scans_SDD'
+
+        DIRs = [DIR1, DIR2, DIR3, DIR4, DIR5, DIR6, DIR7]
+
+        for DIR in DIRs:
+            if not os.path.exists(DIR):
+                os.makedirs(DIR)
+        # if not os.path.exists(DIR1):
+        #     os.makedirs(DIR1)
+        # if not os.path.exists(DIR2):
+        #     os.makedirs(DIR2)
+        # if not os.path.exists(DIR3):
+        #     os.makedirs(DIR3)
+        # if not os.path.exists(DIR4):
+        #     os.makedirs(DIR4)
+        # if not os.path.exists(DIR5):
+        #     os.makedirs(DIR5)
+        # if not os.path.exists(DIR6):
+        #     os.makedirs(DIR6)
 
         # create log file
         #self.create_log()
@@ -194,6 +202,29 @@ class specdata:
         print("Scans MCP data extracted.")
         return
 
+    def split_data_sdd(self, INPUT_FILENAME, hide_details = 1):
+        '''
+            Split sdd raw data into series of scans.
+            scan_no_range = [a, b] : extract scans from #a to #b, optional to avoid the lastest broken scan.
+        '''
+        INPUT_DIR = './' + self.PROJECT_NAME + '/Data/Rawdata/'
+        OUTPUT_DIR = './' + self.PROJECT_NAME + '/Data/Scans_SDD/'
+        
+        with open(INPUT_DIR + INPUT_FILENAME) as f:
+            lines = f.read()
+            
+        scans = lines.split("\n\n")
+        
+        for scan in scans:
+            scan_num = scan[0:10].split(" ")[1] # wicked trick to extract scan No.
+            with open(OUTPUT_DIR + 'scan_sdd_' + str(scan_num).zfill(3) + '.dat', 'w') as f:
+                if scan[0] == '\n':
+                    scan = scan[1:] # remove empty line
+                f.write(scan)
+                if hide_details != 1:
+                    print(f"Extracted scan #{scan_num}.")
+        print("Scans SDD data extracted.")
+
     def scan_filename(self, scan_num):
         '''
             Generate filename for scan #scan_num.
@@ -211,6 +242,13 @@ class specdata:
     def scan_mcp_animation_filename(self, scan_num):
         DIR_movie = './' + self.PROJECT_NAME + '/Data/MCP_images/movie_scan_' + str(scan_num).zfill(3) + '.mp4'
         return DIR_movie
+
+    def scan_sdd_filename(self, scan_num):
+        '''
+            Generate filename for scan #scan_num.
+        '''
+        FILENAME = './' + self.PROJECT_NAME + '/Data/Scans_SDD/scan_sdd_' + str(scan_num).zfill(3) + '.dat'
+        return FILENAME
 
     def read_scan(self, scan_num):
         '''
@@ -578,7 +616,9 @@ class specdata:
             self.MCP_response_img_data = np.load(DIR)
             if rescale:
                 self.MCP_response_img_data = self.MCP_response_img_data / np.max(self.MCP_response_img_data)
+            self.MCP_effective_pixels = len(self.MCP_response_img_data[self.MCP_response_img_data != 0])
             print('MCP response data has been successfully loaded.')
+            print(f'MCP effective pixels number is {self.MCP_effective_pixels}.')
         except FileNotFoundError:
             print('File does not exist!')
         return
@@ -819,13 +859,14 @@ class specdata:
         '''
             Ignore data with low counts.
         '''
-        hklc_data_filtered = []
 
-        i = 0
-        for i in range(len(hklc_data)):
-            if hklc_data[i][3] >= threshold:
-                hklc_data_filtered.append(hklc_data[i])
-        return np.array(hklc_data_filtered)
+        # extract counts array
+        c = np.transpose(hklc_data)[3]
+
+        # filtering
+        hklc_data_filtered = hklc_data[np.where(c >= threshold)]
+
+        return hklc_data_filtered
 
     def hklc_data_filter_hkl(self, hklc_data, h_range, k_range, l_range):
         '''
@@ -991,14 +1032,22 @@ class specdata:
         plt.show()
         return
 
-    def mark_ROI(self, img_data, ROIs, ROI_colors = [], TITLE = '', line_width = 3, font_size = 16, fig_size = (10, 10), save = 0):
+    def mark_ROI(self, img_data, ROIs, ROI_colors = [], TITLE = '', line_width = 2, font_size = 12, v_range = [0, -1], fig_size = (8, 8), save = 0):
         '''
             Mark ROIs on one MCP image.
+
+            v_range = [v_min, v_max]
+            v_max = -1: use highest count as vmax
+            v_max = -2: use different colorbar for each image
         '''
+        [v_min, v_max] = v_range
+        if v_max == -1: # use highest count as vmax
+            v_max = np.amax(img_data)
+
         fig = plt.figure(figsize=fig_size, dpi = 200)
         ax = fig.add_subplot(111)
         ax.set_title(TITLE)
-        img = plt.imshow(img_data.T, origin='lower')
+        img = plt.imshow(img_data.T, origin='lower', vmin=v_min, vmax=v_max)
 
         if ROI_colors == []:
             ROI_colors = ['r' for i in range(len(ROIs))]
@@ -1023,7 +1072,7 @@ class specdata:
         cax = divider.append_axes("right", size="5%", pad=0.1)
         #plt.colorbar(img, cax)
         clb = plt.colorbar(img, cax)
-        clb.set_label('counts / second', labelpad=15, rotation=-90)
+        clb.set_label('intensity (arb. unit)', labelpad=15, rotation=-90)
         fig.tight_layout()
         if save == 1:
             if TITLE == '':
@@ -1469,9 +1518,66 @@ class specdata:
         plt.show()
         return
 
+    ################################################################################
+    ############################## process SDD data ################################
+    ################################################################################
+
+    def data_scan_sdd(self, scan_num, print_info = 0):
+        '''
+            Read sdd data of scan_num from file, return energy & intensities data.
+        '''
+        FILENAME = self.scan_sdd_filename(scan_num)
+
+        with open(FILENAME) as f:
+            datablock = f.read()
+            
+        # extract basic info
+        db = datablock.split("#C SDD Energy Scale\n")
+        energy_bins_no = int(db[0].split('\n')[2].split(' ')[1])
+        shutter_time = float(db[0].split('\n')[3].split(' ')[1])
+        
+        if print_info:
+            print("========== Scan Info. ==========")
+            print(db[0][0:-1])
+            print("================================")
+
+        # extract main data
+        sdd_data_raw = db[1].split('\n#@MCA\n')
+        energy_raw = sdd_data_raw[0].split('\n')[1:] # pop first line '#@CALIB -11.6 2.6351'
+        intensities_raw = sdd_data_raw[1].split('\n')
+        
+        # map ASCII data to float data
+        energy = np.array(list(map(float, energy_raw)))
+        intensities = []
+        for intensity_raw in intensities_raw:
+            intensity = list(map(float, intensity_raw.split(' ')))
+            intensities.append(intensity)
+        intensities = np.transpose(intensities)
+
+        # per second
+        if self.ctps_key:
+            intensities = intensities / shutter_time
+
+        return energy, intensities
+
+    def sdd_ROI(self, scan_num, ROI_range, print_info = 0):
+        '''
+            Return SDD ROI intensity with energy region between ROI_range[0] and ROI_range[1].
+        '''
+        energy, intensities = self.data_scan_sdd(scan_num)
+        intensity = np.average(intensities[(energy >= ROI_range[0]) * (energy <= ROI_range[1])], axis = 0)
+        return intensity
+
+    ################################################################################
+    ############################# visualize SDD data ###############################
+    ################################################################################
+
+
+
     #######################################################################
     ############################## visualize ##############################
     #######################################################################
+
     def plot_scan(self, scan_nums, VARIABLE, DETECTOR, I0_BD3, linestyle, fig_size, font_size, TITLE = ''):
         plt.figure(figsize=fig_size)
         plt.rcParams.update({'font.size': font_size})
